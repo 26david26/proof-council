@@ -32,6 +32,8 @@ def main() -> int:
     p.add_argument("--input", action="append", default=[], help="Workflow input override KEY=VALUE. Repeatable.")
     p.add_argument("--port", type=int, default=5005, help="Dashboard port (default 5005).")
     p.add_argument("--max-parallel", type=int, default=1)
+    p.add_argument("--open", action="store_true",
+                   help="Open the run page in the browser (macOS Safari) once launched.")
     args = p.parse_args()
 
     inputs: dict[str, str] = {}
@@ -80,6 +82,16 @@ def main() -> int:
     run_url = f"http://localhost:{args.port}/run/{run_id}"
     print(run_id)
     print(run_url)
+
+    if args.open:
+        # Open in the browser from inside this (already-approved) script, so the
+        # caller doesn't need a separate `open` command that would prompt again.
+        import subprocess
+        try:
+            subprocess.run(["open", "-a", "Safari", run_url], check=False)
+        except OSError:
+            import webbrowser
+            webbrowser.open(run_url)
     return 0
 
 
