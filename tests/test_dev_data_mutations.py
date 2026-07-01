@@ -583,6 +583,40 @@ class DevDataMutationTests(unittest.TestCase):
         self.assertEqual(cfg2["output_files"], {"hint": "hint.txt"})
         self.assertEqual(cfg2["output_schema"].get("workspace"), "string")
 
+    def test_set_executor_binds_model_to_declared_workflow_knob(self) -> None:
+        # A tiered preset declares model knobs; scaffolds must bind to them so a
+        # dropdown round-trip does not silently pin a node to a literal model.
+        fixture = self.EXECUTOR_FIXTURE.replace(
+            "inputs:\n  problem: ''",
+            "inputs:\n  problem: ''\n  base_model: sonnet\n  gpt_model: gpt-5.4-mini",
+        )
+
+        as_codex = _mutate(
+            fixture, {"op": "set_executor", "name": "cfg_hint", "executor": "codex_cli"}
+        )
+        codex_cfg = _raw(as_codex)["components"]["cfg_hint"]
+        self.assertIn("-m", codex_cfg["cmd"])
+        self.assertEqual(codex_cfg["cmd"][codex_cfg["cmd"].index("-m") + 1], "{gpt_model}")
+        self.assertNotIn("model", codex_cfg)
+
+        back = _mutate(
+            as_codex, {"op": "set_executor", "name": "cfg_hint", "executor": "claude_cli"}
+        )
+        claude_cfg = _raw(back)["components"]["cfg_hint"]
+        idx = claude_cfg["cmd"].index("--model")
+        self.assertEqual(claude_cfg["cmd"][idx + 1], "{base_model}")
+
+    def test_set_executor_falls_back_to_literal_model_without_knobs(self) -> None:
+        as_claude = _mutate(
+            _mutate(
+                self.EXECUTOR_FIXTURE,
+                {"op": "set_executor", "name": "cfg_hint", "executor": "codex_cli"},
+            ),
+            {"op": "set_executor", "name": "cfg_hint", "executor": "claude_cli"},
+        )
+        cfg = _raw(as_claude)["components"]["cfg_hint"]
+        self.assertEqual(cfg["cmd"][cfg["cmd"].index("--model") + 1], "sonnet")
+
     def test_rename_cli_file_output_updates_existing_refs(self) -> None:
         raw_yaml = _mutate(
             textwrap.dedent(

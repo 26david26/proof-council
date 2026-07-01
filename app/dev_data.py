@@ -4230,6 +4230,21 @@ def _iter_agent_nodes(nodes: Any):
             yield from _iter_agent_nodes(body.get("nodes"))
 
 
+def _workflow_model_binding(raw: dict[str, Any], knobs: tuple[str, ...]) -> str | None:
+    """Return a '{knob}' cmd binding for the first declared workflow model knob.
+
+    Knob names are flavor-specific (claude_model/base_model vs codex_model/
+    gpt_model) — reusing a binding across CLI flavors would feed one provider's
+    model names to the other, so callers pass only their own flavor's knobs.
+    """
+    inputs = raw.get("inputs")
+    if isinstance(inputs, dict):
+        for knob in knobs:
+            if knob in inputs:
+                return "{" + knob + "}"
+    return None
+
+
 def _api_output_config(cfg: dict[str, Any]) -> dict[str, Any] | None:
     """Derive the API output extraction spec from the component's output fields.
 
@@ -4276,6 +4291,9 @@ def _op_set_executor(raw: dict[str, Any], operation: dict[str, Any]) -> None:
         cfg.pop(key, None)
 
     if executor == "claude_cli":
+        # Bind the model to a declared workflow knob so tiered presets keep
+        # steering the node; only fall back to a literal when no knob exists.
+        model_arg = _workflow_model_binding(raw, ("claude_model", "base_model")) or "sonnet"
         cfg.update(
             {
                 "cmd": [
@@ -4285,7 +4303,7 @@ def _op_set_executor(raw: dict[str, Any], operation: dict[str, Any]) -> None:
                     "stream-json",
                     "--verbose",
                     "--model",
-                    "sonnet",
+                    model_arg,
                     "--permission-mode",
                     "acceptEdits",
                     "--allowedTools",
@@ -4300,17 +4318,20 @@ def _op_set_executor(raw: dict[str, Any], operation: dict[str, Any]) -> None:
             }
         )
     elif executor == "codex_cli":
+        binding = _workflow_model_binding(raw, ("codex_model", "gpt_model"))
+        cmd = [
+            "codex",
+            "exec",
+            "--ignore-user-config",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--json",
+        ]
+        if binding:
+            cmd += ["-m", binding]
         cfg.update(
             {
-                "cmd": [
-                    "codex",
-                    "exec",
-                    "--ignore-user-config",
-                    "--skip-git-repo-check",
-                    "--ephemeral",
-                    "--json",
-                ],
-                "model": "gpt-5.4-mini",
+                "cmd": cmd,
                 "model_reasoning_effort": "medium",
                 "codex_sandbox": "auto",
                 "copy_codex_auth": True,
@@ -4320,6 +4341,8 @@ def _op_set_executor(raw: dict[str, Any], operation: dict[str, Any]) -> None:
                 "contract": "auto",
             }
         )
+        if not binding:
+            cfg["model"] = "gpt-5.4-mini"
     elif executor == "api":
         cfg["model"] = "models/anthropic/sonnet_46"
         output = _api_output_config(cfg)

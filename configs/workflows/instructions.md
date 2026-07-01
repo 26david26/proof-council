@@ -245,6 +245,10 @@ task identity (prompt, `input_schema`/`output_schema`, `output_files`,
 executor; the node's `agent:` class is updated everywhere the component is
 used. CLI executors get `contract: auto`; the API executor maps a single text
 output to `output.default_field` (multiple outputs become `xml_tags`).
+CLI scaffolds bind their model to a declared workflow knob when one exists
+(`{claude_model}`/`{base_model}` for Claude, `{codex_model}`/`{gpt_model}` for
+Codex) and only fall back to a literal model when the preset declares none, so
+tiered presets keep steering switched nodes.
 
 ## Tools
 
