@@ -2809,6 +2809,12 @@
                 _downloadBlob(new Blob([_humanPromptText(txtBtn)], {type: 'text/plain'}), 'human_prompt.txt');
                 return;
             }
+            const texBtn = e.target.closest('.prompt-tex-btn');
+            if (texBtn) {
+                // Server streams the current proof draft wrapped as a compilable .tex.
+                window.location.href = texBtn.dataset.texUrl;
+                return;
+            }
             const pdfBtn = e.target.closest('.prompt-pdf-btn');
             if (pdfBtn) {
                 const prev = pdfBtn.textContent;

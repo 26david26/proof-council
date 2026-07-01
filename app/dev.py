@@ -877,7 +877,7 @@ def create_app(runs_roots: tuple[Path, ...] = DEFAULT_RUNS_ROOTS) -> Flask:
         if text is None:
             abort(404)
         return Response(
-            text,
+            _wrap_latex_body(text),
             mimetype="text/x-tex",
             headers={"Content-Disposition": f'attachment; filename="{field}.tex"'},
         )
@@ -892,13 +892,35 @@ def create_app(runs_roots: tuple[Path, ...] = DEFAULT_RUNS_ROOTS) -> Flask:
         text = workflow_output_field_text(run.path, load_event_tree(run.path), field)
         if text is None:
             abort(404)
-        pdf, log = _compile_latex_pdf(text, field)
+        pdf, log = _compile_latex_pdf(_wrap_latex_body(text), field)
         if pdf is None:
             return Response("LaTeX compile failed:\n\n" + log, status=422, mimetype="text/plain")
         return Response(
             pdf,
             mimetype="application/pdf",
             headers={"Content-Disposition": f'inline; filename="{field}.pdf"'},
+        )
+
+    @app.route("/run/<run_id>/human-proof.tex")
+    def run_human_proof_tex(run_id: str):
+        # Download the current proof draft shown to the human as a compilable .tex
+        # (body-only drafts get the standard preamble; full documents pass through).
+        run = find_run(app.config["RUNS_ROOTS"], run_id)
+        if run is None:
+            abort(404)
+        wanted = request.args.get("task", "")
+        tasks = load_pending_human_tasks(run.path)
+        task = next((t for t in tasks if t.get("response_filename") == wanted), None)
+        if task is None and tasks:
+            task = tasks[0]
+        proof = str(((task or {}).get("inputs") or {}).get("proof") or "")
+        if not proof.strip():
+            abort(404, description="no proof draft on this task yet")
+        stem = re.sub(r"[^A-Za-z0-9_-]", "", Path(wanted).name.replace(".response.json", "")) or "proof"
+        return Response(
+            _wrap_latex_body(proof),
+            mimetype="text/x-tex",
+            headers={"Content-Disposition": f'attachment; filename="{stem}.tex"'},
         )
 
     @app.route("/compile/text-pdf", methods=["POST"])
@@ -943,6 +965,30 @@ _MONOSPACE_TEMPLATE = r"""\documentclass[11pt]{article}
 \lstinputlisting{__NAME__.txt}
 \end{document}
 """
+
+# Standard preamble wrapped around a proof BODY on download so it compiles, and
+# so working documents can be kept body-only (no per-round preamble noise).
+_STANDARD_PREAMBLE = r"""\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,amsfonts,mathtools}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}"""
+
+
+def _wrap_latex_body(text: str) -> str:
+    """Return a compilable LaTeX document. If the text is already a full document
+    (has \\documentclass) it is returned unchanged; otherwise it is treated as a
+    body and wrapped in the standard preamble."""
+    if "\\documentclass" in text:
+        return text
+    return _STANDARD_PREAMBLE + "\n\\begin{document}\n\n" + text.strip() + "\n\n\\end{document}\n"
 
 # Map common math/typographic Unicode to ASCII so a pdflatex monospace render
 # never chokes on a glyph the default fonts lack. Anything unmapped becomes "?".
