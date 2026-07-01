@@ -3,6 +3,7 @@
 # rounds -- background specialists (framing/litsearch/cleandef/analogy/compute) run in
 # round 1 or when the editor's handoff requests them by @token. Model knobs: base_model
 # (specialists), key_model (synth/author/reconciler), gpt_model (lemma + critic).
+# Delivery mechanics (files + finish) are auto-appended via `contract: auto`.
 # Requires Claude and OpenAI/codex subscription auth.
 workflow: proofstack.agents.dag_workflow.DAGWorkflow
 description: 'Cross-provider council: Claude specialists + Codex (GPT) lemma prover and critic, an editor/reconciler that emits one integrated doc, and lean rounds (background specialists run round 1 or on request). Model knobs: base_model, key_model, gpt_model. Needs Claude and OpenAI/codex auth.'
@@ -40,7 +41,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @framing (a line like '@framing: ...'). Address exactly that request.\n  If @framing does NOT appear, write exactly this one line to hint.txt:\n      SKIP: no new framing needed this round.\n  then run finish immediately. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSet the problem up cleanly for the team:\n- restate it precisely, fixing notation;\n- say what a valid answer must look like (what counts as yes/no, and exactly what a\n  'maximal' object must satisfy);\n- list the natural reductions / special cases worth separating (e.g. finite vs\n  infinite extension, the affine-local picture);\n- name the key objects briefly and flag the main uncertainties the proof must resolve.\nThis frames the work; it is NOT a proof or a literature survey.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"framing brief\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @framing (a line like '@framing: ...'). Address exactly that request.\n  If @framing does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new framing needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSet the problem up cleanly for the team:\n- restate it precisely, fixing notation;\n- say what a valid answer must look like (what counts as yes/no, and exactly what a\n  'maximal' object must satisfy);\n- list the natural reductions / special cases worth separating (e.g. finite vs\n  infinite extension, the affine-local picture);\n- name the key objects briefly and flag the main uncertainties the proof must resolve.\nThis frames the work; it is NOT a proof or a literature survey.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -54,6 +55,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   claude_analogy:
     cmd:
     - claude
@@ -76,7 +78,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @analogy (a line like '@analogy: ...'). Address exactly that request.\n  If @analogy does NOT appear, write exactly this one line to hint.txt:\n      SKIP: no new analogy needed this round.\n  then run finish immediately. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSuggest analogous problems, standard proof templates, or strategies that have worked on\nsimilar problems, flagging how promising vs speculative each is.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"analogy brief\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @analogy (a line like '@analogy: ...'). Address exactly that request.\n  If @analogy does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new analogy needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSuggest analogous problems, standard proof templates, or strategies that have worked on\nsimilar problems, flagging how promising vs speculative each is.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -90,6 +92,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   human_hint:
     prompt: 'You are the HUMAN specialist on this proof council. Contribute whatever you
 
@@ -144,7 +147,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the council EDITOR and strategist. This is an ATTENTION step, not a\ncompression step. Nine specialists (eight AI plus the human) each wrote a brief\nabout this problem and the current proof attempt. Do NOT blend all nine into a\nparagraph. Decide where the author should spend THIS round's attention, and hand\nthem a clear plan plus the raw material to execute it.\n\nWrite brief.txt with these sections, in order:\n\n1. STRATEGY (2-4 sentences): the single main line of attack the author should\n   pursue this round, and the order of sub-steps. Be decisive.\n\n2. FOCUS: pick the 2-3 most promising briefs for this round. For each, name the\n   specialist, give one line on why it is the highest-value thread now, then\n   reproduce its useful content IN FULL. Do not summarise away specifics: keep\n   any completed lemma proof, exact theorem statement, constant, bound,\n   construction, or counterexample verbatim.\n\n3. MUST-NOT-DROP: regardless of focus, always surface verbatim (a) any confirmed\n   counterexample or broken claim, so the author does not build on it, and (b)\n   any fully proved lemma, since it is banked progress to reuse.\n\n4. PARKED: one line naming the briefs you set aside this round and why, so\n   nothing is silently lost; they may resurface next round.\n\nProblem:\n{problem}\n\nPremise specialist:\n{premise}\n\nAnalogy specialist:\n{analogy}\n\nTactician specialist:\n{tactician}\n\nLemma specialist:\n{lemma}\n\nCounterexample specialist:\n{counterex}\n\nDefinitions specialist:\n{cleandef}\n\nLiterature specialist:\n{litsearch}\n\nCompute specialist:\n{compute}\n\nHuman specialist:\n{human}\n\nWrite the result to a file named brief.txt, then run:\n  finish '{\"status\":\"done\",\"summary\":\"strategy + focused briefs\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are the council EDITOR and strategist. This is an ATTENTION step, not a\ncompression step. Nine specialists (eight AI plus the human) each wrote a brief\nabout this problem and the current proof attempt. Do NOT blend all nine into a\nparagraph. Decide where the author should spend THIS round's attention, and hand\nthem a clear plan plus the raw material to execute it.\n\nWrite brief.txt with these sections, in order:\n\n1. STRATEGY (2-4 sentences): the single main line of attack the author should\n   pursue this round, and the order of sub-steps. Be decisive.\n\n2. FOCUS: pick the 2-3 most promising briefs for this round. For each, name the\n   specialist, give one line on why it is the highest-value thread now, then\n   reproduce its useful content IN FULL. Do not summarise away specifics: keep\n   any completed lemma proof, exact theorem statement, constant, bound,\n   construction, or counterexample verbatim.\n\n3. MUST-NOT-DROP: regardless of focus, always surface verbatim (a) any confirmed\n   counterexample or broken claim, so the author does not build on it, and (b)\n   any fully proved lemma, since it is banked progress to reuse.\n\n4. PARKED: one line naming the briefs you set aside this round and why, so\n   nothing is silently lost; they may resurface next round.\n\nProblem:\n{problem}\n\nPremise specialist:\n{premise}\n\nAnalogy specialist:\n{analogy}\n\nTactician specialist:\n{tactician}\n\nLemma specialist:\n{lemma}\n\nCounterexample specialist:\n{counterex}\n\nDefinitions specialist:\n{cleandef}\n\nLiterature specialist:\n{litsearch}\n\nCompute specialist:\n{compute}\n\nHuman specialist:\n{human}\n"
     input_schema:
       problem: string
       premise: string
@@ -165,6 +168,7 @@ components:
       brief: brief.txt
     done_outputs:
       status: status
+    contract: auto
   claude_author:
     cmd:
     - claude
@@ -187,7 +191,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the author/documenter for a mathematical research workflow. Your job\nis to turn the focused brief below into the clearest possible LaTeX progress\ndocument. If the ingredients are enough for a complete proof, write a\ncomplete rigorous proof. If they are not enough, do not pretend they are:\nwrite a clean partial proof, clearly separate established steps from\nconjectural or unfinished steps, and state exactly what remains to be proved.\n\nYou may use web search to verify a fact, confirm a cited result, or look up a\nprecise statement you are about to rely on. Do this when it removes a gap, not\nas a detour. Add any source you actually use to a references.bib file and cite\nit in answer.tex.\n\nProblem:\n{problem}\n\nFocused brief (synthesized from the specialists):\n{brief}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nCritic's feedback from last round (may be empty):\n{memory}\n\nWrite a self-contained LaTeX document to a file named answer.tex. It should\ninclude:\n1. a concise status paragraph saying whether this is a complete proof or a\n   progress report;\n2. the cleanest rigorous argument currently justified by the brief and prior\n   attempt;\n3. a clearly marked section listing the remaining gaps, missing lemmas, or\n   checks still needed.\nThen run:\n  finish '{\"status\":\"done\",\"summary\":\"author progress draft\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are the author/documenter for a mathematical research workflow. Your job\nis to turn the focused brief below into the clearest possible LaTeX progress\ndocument. If the ingredients are enough for a complete proof, write a\ncomplete rigorous proof. If they are not enough, do not pretend they are:\nwrite a clean partial proof, clearly separate established steps from\nconjectural or unfinished steps, and state exactly what remains to be proved.\n\nYou may use web search to verify a fact, confirm a cited result, or look up a\nprecise statement you are about to rely on. Do this when it removes a gap, not\nas a detour. Add any source you actually use to a references.bib file and cite\nit in answer.tex.\n\nProblem:\n{problem}\n\nFocused brief (synthesized from the specialists):\n{brief}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nCritic's feedback from last round (may be empty):\n{memory}\n\nYour deliverable is a self-contained LaTeX document. It should include:\n1. a concise status paragraph saying whether this is a complete proof or a\n   progress report;\n2. the cleanest rigorous argument currently justified by the brief and prior\n   attempt;\n3. a clearly marked section listing the remaining gaps, missing lemmas, or\n   checks still needed.\n"
     input_schema:
       problem: string
       brief: string
@@ -202,6 +206,7 @@ components:
       answer_tex: answer.tex
     done_outputs:
       status: status
+    contract: auto
   claude_tactician:
     cmd:
     - claude
@@ -224,7 +229,32 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the TACTICIAN on a proof-writing council. In a few bullet points, lay\nout the intermediate claims or sub-lemmas a correct proof would likely need, the\norder to tackle them, and which look hardest — flag how confident you are that\neach is both needed and true. You propose the plan of attack; you do NOT need to\nprove anything here. Be brief; this is a hint for the author.\n\nProblem:\n{problem}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nCritic's feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"tactician brief\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: 'You are the TACTICIAN on a proof-writing council. In a few bullet points, lay
+
+      out the intermediate claims or sub-lemmas a correct proof would likely need, the
+
+      order to tackle them, and which look hardest — flag how confident you are that
+
+      each is both needed and true. You propose the plan of attack; you do NOT need to
+
+      prove anything here. Be brief; this is a hint for the author.
+
+
+      Problem:
+
+      {problem}
+
+
+      Current proof attempt (may be empty on round 1):
+
+      {proof}
+
+
+      Critic''s feedback from last round (may be empty):
+
+      {memory}
+
+      '
     input_schema:
       problem: string
       proof: string
@@ -238,6 +268,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   claude_counterex:
     cmd:
     - claude
@@ -260,7 +291,43 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the COUNTEREXAMPLE specialist — a skeptic on the council. Your job is\nNOT to prove the theorem but to ATTACK the council's current claims. Look at the\ncurrent proof attempt (and the kinds of lemmas it relies on) and hunt for\ncounterexamples, edge cases, or small parameter values where a claimed formula\nor sub-lemma FAILS. Test concrete small cases by hand.\n\nIn a few bullets:\n- list any claim you managed to BREAK, with the explicit breaking example;\n- list any claim you tried hard to break and could NOT (mild positive evidence);\n- flag the riskiest unchecked claim the author should verify first.\nBe brief; this is a hint for the author and critic, not a proof.\n\nProblem:\n{problem}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nCritic's feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"counterexample brief\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: 'You are the COUNTEREXAMPLE specialist — a skeptic on the council. Your job is
+
+      NOT to prove the theorem but to ATTACK the council''s current claims. Look at the
+
+      current proof attempt (and the kinds of lemmas it relies on) and hunt for
+
+      counterexamples, edge cases, or small parameter values where a claimed formula
+
+      or sub-lemma FAILS. Test concrete small cases by hand.
+
+
+      In a few bullets:
+
+      - list any claim you managed to BREAK, with the explicit breaking example;
+
+      - list any claim you tried hard to break and could NOT (mild positive evidence);
+
+      - flag the riskiest unchecked claim the author should verify first.
+
+      Be brief; this is a hint for the author and critic, not a proof.
+
+
+      Problem:
+
+      {problem}
+
+
+      Current proof attempt (may be empty on round 1):
+
+      {proof}
+
+
+      Critic''s feedback from last round (may be empty):
+
+      {memory}
+
+      '
     input_schema:
       problem: string
       proof: string
@@ -274,6 +341,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   claude_cleandef:
     cmd:
     - claude
@@ -296,7 +364,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @cleandef (a line like '@cleandef: ...'). Address exactly that request.\n  If @cleandef does NOT appear, write exactly this one line to hint.txt:\n      SKIP: no new definition needed this round.\n  then run finish immediately. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nIdentify the central definition(s) the proof relies on and propose the SINGLE most\nvaluable reformulation — an equivalent restatement that most improves tractability.\nState it precisely, explain in 1-2 sentences why it is equivalent (flag if unsure), and\none sentence on why you chose it over alternatives. Output exactly one reformulation.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"definitions brief\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @cleandef (a line like '@cleandef: ...'). Address exactly that request.\n  If @cleandef does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new definition needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nIdentify the central definition(s) the proof relies on and propose the SINGLE most\nvaluable reformulation — an equivalent restatement that most improves tractability.\nState it precisely, explain in 1-2 sentences why it is equivalent (flag if unsure), and\none sentence on why you chose it over alternatives. Output exactly one reformulation.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -310,6 +378,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   claude_litsearch:
     cmd:
     - claude
@@ -332,7 +401,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @litsearch (a line like '@litsearch: ...'). Address exactly that request.\n  If @litsearch does NOT appear, write exactly this one line to hint.txt:\n      SKIP: no new literature needed this round.\n  then run finish immediately. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSearch the literature for results, lemmas, or techniques directly relevant to the\nproblem and the current sticking points. For each: a precise citation; the statement\nVERBATIM (hypotheses + conclusion, exact conditions); which step it discharges and what\nmust still be checked to apply it; whether it needs adaptation. Emit a references.bib\nblock. If nothing is clearly relevant, say so rather than inventing citations.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"literature evidence sheet\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @litsearch (a line like '@litsearch: ...'). Address exactly that request.\n  If @litsearch does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new literature needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSearch the literature for results, lemmas, or techniques directly relevant to the\nproblem and the current sticking points. For each: a precise citation; the statement\nVERBATIM (hypotheses + conclusion, exact conditions); which step it discharges and what\nmust still be checked to apply it; whether it needs adaptation. Emit a references.bib\nblock. If nothing is clearly relevant, say so rather than inventing citations.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -346,6 +415,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   claude_compute:
     cmd:
     - claude
@@ -368,7 +438,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @compute (a line like '@compute: ...'). Address exactly that request.\n  If @compute does NOT appear, write exactly this one line to hint.txt:\n      SKIP: no new computation needed this round.\n  then run finish immediately. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nDesign and, where practical, ACTUALLY RUN small concrete checks of the current claims:\n- construct small explicit cases (low dimension, specific rings/ideals, specific field\n  extensions) and work out the answer there;\n- try to break any stated claim on a toy case — a single caught failure is high-value;\n- where a check is genuinely computational (ideal membership, a principality test, a\n  small Groebner/resultant computation), WRITE AND RUN actual code (python/sympy) to\n  settle it rather than reasoning by hand — you have a shell.\nReport the cases, what you computed, and any claim they support or refute.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n\nWrite your brief to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"computation / examples brief\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @compute (a line like '@compute: ...'). Address exactly that request.\n  If @compute does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new computation needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nDesign and, where practical, ACTUALLY RUN small concrete checks of the current claims:\n- construct small explicit cases (low dimension, specific rings/ideals, specific field\n  extensions) and work out the answer there;\n- try to break any stated claim on a toy case — a single caught failure is high-value;\n- where a check is genuinely computational (ideal membership, a principality test, a\n  small Groebner/resultant computation), WRITE AND RUN actual code (python/sympy) to\n  settle it rather than reasoning by hand — you have a shell.\nReport the cases, what you computed, and any claim they support or refute.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -382,6 +452,7 @@ components:
       hint: hint.txt
     done_outputs:
       status: status
+    contract: auto
   codex_critic:
     cmd:
     - codex
@@ -397,7 +468,7 @@ components:
       backend: subprocess
       timeout_s: 900
     cache_enabled: true
-    prompt: "You are a strict referee, working independently of the team that wrote the\nproof. Check it rigorously for gaps, unjustified steps, false claims, and\nmissing cases.\n\nProblem:\n{problem}\n\nProof to check:\n{proof}\n\nThen do BOTH of these:\n1. Write specific, actionable feedback (what to fix next) to a file named\n   feedback.md .\n2. Write a file named  verdict.txt  containing EXACTLY one word, no\n   punctuation: \"ready\" if this is a complete and correct proof, otherwise\n   \"continue\".\nFinally run:\n  finish '{\"status\":\"done\",\"summary\":\"critique\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are a strict referee, working independently of the team that wrote the\nproof. Check it rigorously for gaps, unjustified steps, false claims, and\nmissing cases.\n\nProblem:\n{problem}\n\nProof to check:\n{proof}\n\nDeliverables:\n- your feedback: specific and actionable (what to fix next);\n- your verdict: EXACTLY one word, no punctuation: \"ready\" if this is a\n  complete and correct proof, otherwise \"continue\".\n"
     input_schema:
       problem: string
       proof: string
@@ -414,6 +485,7 @@ components:
       status: status
     codex_sandbox: auto
     copy_codex_auth: true
+    contract: auto
   codex_lemma:
     cmd:
     - codex
@@ -429,7 +501,32 @@ components:
       backend: subprocess
       timeout_s: 900
     cache_enabled: true
-    prompt: "You are the LEMMA specialist, an independent prover working separately from the rest\nof the team. Identify the key sub-lemma whose proof would most advance the argument,\nand PROVE IT rigorously and completely — full details, no hand-waving. If you cannot\nprove it, say precisely where it breaks and what would be needed. One fully-proved\nlemma is worth more than several sketches.\n\nProblem:\n{problem}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n\nWrite your lemma and its proof to a file named  hint.txt , then run:\n  finish '{\"status\":\"done\",\"summary\":\"lemma\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: 'You are the LEMMA specialist, an independent prover working separately from the rest
+
+      of the team. Identify the key sub-lemma whose proof would most advance the argument,
+
+      and PROVE IT rigorously and completely — full details, no hand-waving. If you cannot
+
+      prove it, say precisely where it breaks and what would be needed. One fully-proved
+
+      lemma is worth more than several sketches.
+
+
+      Problem:
+
+      {problem}
+
+
+      Current proof attempt (may be empty on round 1):
+
+      {proof}
+
+
+      Editor''s handoff / feedback from last round (may be empty):
+
+      {memory}
+
+      '
     input_schema:
       problem: string
       proof: string
@@ -445,6 +542,7 @@ components:
       status: status
     codex_sandbox: auto
     copy_codex_auth: true
+    contract: auto
   claude_reconciler:
     cmd:
     - claude
@@ -467,7 +565,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the council EDITOR. You are handed the author's current LaTeX draft and the\ncritic's feedback on it. Produce ONE integrated document the human can read in a\nsingle pass — do NOT leave them to reconcile a draft against a separate critique.\n\nWrite integrated.tex: the author's document with the critic's corrections applied\ninline where the critic is clearly right. Where author and critic genuinely disagree,\nor a point is unresolved, KEEP the text but flag it in place with a visible marker\nline beginning\n    % >>> DISPUTE: <one-line statement of the open question>\nso every unresolved issue is visible where it lives. Do not silently drop the\nauthor's work, and do not assert a step you cannot see is justified.\n\nAlso write handoff.md, a short editor's handoff for the next round:\n- OPEN: unresolved points (the disputes), most important first.\n- REQUESTS: optional lines asking a background specialist to help next round, using\n  the exact tokens @framing, @litsearch, @cleandef, @analogy, @compute — e.g.\n  '@compute: check whether (x)+(y) is principal in k[x,y]_(x,y)'. Only request a\n  specialist when it would actually unblock an OPEN point; otherwise omit.\n\nProblem:\n{problem}\n\nAuthor's current draft (LaTeX):\n{draft}\n\nCritic's feedback:\n{critique}\n\nWrite integrated.tex and handoff.md, then run:\n  finish '{\"status\":\"done\",\"summary\":\"reconciled doc + handoff\"}'\nWork autonomously; do not ask questions.\n"
+    prompt: "You are the council EDITOR. You are handed the author's current LaTeX draft and the\ncritic's feedback on it. Produce ONE integrated document the human can read in a\nsingle pass — do NOT leave them to reconcile a draft against a separate critique.\n\nWrite integrated.tex: the author's document with the critic's corrections applied\ninline where the critic is clearly right. Where author and critic genuinely disagree,\nor a point is unresolved, KEEP the text but flag it in place with a visible marker\nline beginning\n    % >>> DISPUTE: <one-line statement of the open question>\nso every unresolved issue is visible where it lives. Do not silently drop the\nauthor's work, and do not assert a step you cannot see is justified.\n\nAlso write handoff.md, a short editor's handoff for the next round:\n- OPEN: unresolved points (the disputes), most important first.\n- REQUESTS: optional lines asking a background specialist to help next round, using\n  the exact tokens @framing, @litsearch, @cleandef, @analogy, @compute — e.g.\n  '@compute: check whether (x)+(y) is principal in k[x,y]_(x,y)'. Only request a\n  specialist when it would actually unblock an OPEN point; otherwise omit.\n\nProblem:\n{problem}\n\nAuthor's current draft (LaTeX):\n{draft}\n\nCritic's feedback:\n{critique}\n"
     input_schema:
       problem: string
       draft: string
@@ -483,6 +581,7 @@ components:
       handoff: handoff.md
     done_outputs:
       status: status
+    contract: auto
 dag:
   nodes:
   - id: rounds

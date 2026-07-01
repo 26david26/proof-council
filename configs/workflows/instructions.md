@@ -222,6 +222,19 @@ A CLI node using that component is just a normal agent node:
 
 Prefer file outputs and `done_outputs` over custom Python collection code. Only add a specialized Python CLI agent if the behavior cannot be represented as prompt, setup files, output files, and `finish` metadata.
 
+### Auto-generated output contract (`contract: auto`)
+
+Set `contract: auto` on a CLI component to have the delivery boilerplate appended
+to the prompt automatically: the agent generates a "HOW TO DELIVER YOUR OUTPUT"
+tail listing the files to write (from `output_files`, skipping passive kinds
+`path`/`exists`/`listing`) and the exact `finish '{"status":"done",...}'` command.
+The prompt should then describe only the task — do not also hand-write
+"write your brief to hint.txt, then run finish" instructions. This keeps prompts
+free of executor mechanics, so the same component text stays portable across
+backends (CLI, API, human). Components with unusual delivery semantics (e.g. a
+file that must contain EXACTLY one word) should state those constraints in the
+prompt body; the tail only covers the mechanics.
+
 ## Tools
 
 Put tools on the component, not the node. Use `tool_refs` for tools defined in `configs/tools`.

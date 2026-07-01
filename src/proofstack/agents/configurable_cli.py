@@ -98,9 +98,41 @@ class ConfigurableCLIAgent(CLIAgent):
         fields = self._fields(inp, workspace=self._active_workspace_root)
         raw = self.component_config.get("prompt") or ""
         text = _format_template(str(raw), fields)
+        if self.component_config.get("contract") == "auto":
+            text = text.rstrip("\n") + "\n" + self._contract_tail()
         if self.component_config.get("append_prompt_newline", True) and not text.endswith("\n"):
             text += "\n"
         return text
+
+    def _contract_tail(self) -> str:
+        # With `contract: auto` the component prompt describes only the task;
+        # the delivery mechanics (which files to write, the finish handshake)
+        # are generated here from output_files/done_outputs. This keeps prompts
+        # free of executor boilerplate so the same component text can be run by
+        # a different backend (API model, human) whose adapter supplies its own
+        # delivery contract.
+        lines = ["", "----", "HOW TO DELIVER YOUR OUTPUT:"]
+        files: list[tuple[str, str]] = []
+        raw = self.component_config.get("output_files") or {}
+        if isinstance(raw, dict):
+            for field, spec in raw.items():
+                relpath, kind, _default = _output_file_spec(spec)
+                if kind in {"path", "exists", "listing"} or not relpath:
+                    continue
+                files.append((str(field), relpath))
+        step = 1
+        if files:
+            lines.append(f"{step}. Write these file(s) in the current working directory:")
+            for field, relpath in files:
+                lines.append(f"   - {relpath}  (your {field.replace('_', ' ')})")
+            step += 1
+        lines.append(
+            f"{step}. When everything is written, signal completion by running exactly"
+        )
+        lines.append("   this shell command:")
+        lines.append('   finish \'{"status":"done","summary":"<one line: what you did>"}\'')
+        lines.append("Work autonomously; do not ask questions.")
+        return "\n".join(lines) + "\n"
 
     def extra_env(self, sandbox: Sandbox, inp: BaseModel) -> dict[str, str]:
         fields = self._fields(inp, workspace=sandbox.root)
