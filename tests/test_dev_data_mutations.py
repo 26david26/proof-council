@@ -457,6 +457,132 @@ class DevDataMutationTests(unittest.TestCase):
         self.assertIs(cfg["sandbox"]["docker_no_new_privileges"], False)
         self.assertEqual(cfg["usage"]["type"], "codex_jsonl")
 
+    EXECUTOR_FIXTURE = textwrap.dedent(
+        """
+        workflow: proofstack.agents.dag_workflow.DAGWorkflow
+        inputs:
+          problem: ''
+        components:
+          cfg_hint:
+            cmd: [claude, -p, --output-format, stream-json, --verbose, --model, sonnet,
+                  --permission-mode, acceptEdits, --allowedTools, 'Bash(finish:*)']
+            soft_timeout_s: 780
+            sandbox: {backend: subprocess, timeout_s: 900}
+            env: {HOME: '{env:HOME}'}
+            usage: {type: claude_json}
+            cache_enabled: true
+            contract: auto
+            prompt: |
+              You are the specialist.
+
+              Problem:
+              {problem}
+            input_schema:
+              problem: string
+              workspace: string
+            output_schema:
+              workspace: string
+              hint: string
+              status: string
+            output_files:
+              hint: hint.txt
+            done_outputs:
+              status: status
+        dag:
+          nodes:
+            - id: rounds
+              kind: repeat
+              max_iterations: 2
+              condition: {python: 'iteration < max_iterations'}
+              initial_state: {memory: ''}
+              body:
+                nodes:
+                  - id: hint
+                    kind: agent
+                    agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+                    name: cfg_hint
+                    inputs:
+                      problem: $input.problem
+                state_updates:
+                  memory: $node.hint.hint
+          outputs:
+            memory: $state.memory
+        """
+    )
+
+    def test_set_executor_swaps_cli_component_to_codex(self) -> None:
+        raw_yaml = _mutate(
+            self.EXECUTOR_FIXTURE,
+            {"op": "set_executor", "name": "cfg_hint", "executor": "codex_cli"},
+        )
+        raw = _raw(raw_yaml)
+        cfg = raw["components"]["cfg_hint"]
+
+        self.assertEqual(cfg["cmd"][:2], ["codex", "exec"])
+        self.assertIs(cfg["copy_codex_auth"], True)
+        self.assertEqual(cfg["contract"], "auto")
+        self.assertNotIn("env", cfg)   # codex auth travels via CODEX_HOME, not HOME
+        self.assertNotIn("usage", cfg)
+        # Task identity survives the swap.
+        self.assertIn("You are the specialist.", cfg["prompt"])
+        self.assertEqual(cfg["output_files"], {"hint": "hint.txt"})
+        node = raw["dag"]["nodes"][0]["body"]["nodes"][0]
+        self.assertEqual(
+            node["agent"], "proofstack.agents.configurable_cli.ConfigurableCLIAgent"
+        )
+
+    def test_set_executor_swaps_cli_component_to_human(self) -> None:
+        raw_yaml = _mutate(
+            self.EXECUTOR_FIXTURE,
+            {"op": "set_executor", "name": "cfg_hint", "executor": "human"},
+        )
+        raw = _raw(raw_yaml)
+        cfg = raw["components"]["cfg_hint"]
+
+        for key in ("cmd", "env", "usage", "sandbox", "contract", "cache_enabled"):
+            self.assertNotIn(key, cfg)
+        self.assertIn("You are the specialist.", cfg["prompt"])
+        # workspace is CLI mechanics; the human answers via the web form.
+        self.assertNotIn("workspace", cfg["input_schema"])
+        self.assertNotIn("workspace", cfg["output_schema"])
+        self.assertIn("hint", cfg["output_schema"])
+        node = raw["dag"]["nodes"][0]["body"]["nodes"][0]
+        self.assertEqual(node["agent"], "proofstack.agents.human_agent.HumanAgent")
+
+    def test_set_executor_swaps_cli_component_to_api_and_back(self) -> None:
+        raw_yaml = _mutate(
+            self.EXECUTOR_FIXTURE,
+            {"op": "set_executor", "name": "cfg_hint", "executor": "api"},
+        )
+        raw = _raw(raw_yaml)
+        cfg = raw["components"]["cfg_hint"]
+
+        self.assertEqual(cfg["model"], "models/anthropic/sonnet_46")
+        # CLI prompt becomes the API user prompt; single text output maps to
+        # default_field so the whole response is the hint.
+        self.assertIn("You are the specialist.", cfg["user_prompt"])
+        self.assertNotIn("prompt", cfg)
+        self.assertEqual(cfg["output"], {"default_field": "hint"})
+        node = _raw(raw_yaml)["dag"]["nodes"][0]["body"]["nodes"][0]
+        self.assertEqual(
+            node["agent"],
+            "proofstack.agents.configurable_prompt.ConfigurablePromptAgent",
+        )
+
+        back = _raw(
+            _mutate(
+                raw_yaml,
+                {"op": "set_executor", "name": "cfg_hint", "executor": "claude_cli"},
+            )
+        )
+        cfg2 = back["components"]["cfg_hint"]
+        self.assertEqual(cfg2["cmd"][0], "claude")
+        self.assertEqual(cfg2["contract"], "auto")
+        self.assertIn("You are the specialist.", cfg2["prompt"])
+        self.assertNotIn("user_prompt", cfg2)
+        self.assertEqual(cfg2["output_files"], {"hint": "hint.txt"})
+        self.assertEqual(cfg2["output_schema"].get("workspace"), "string")
+
     def test_rename_cli_file_output_updates_existing_refs(self) -> None:
         raw_yaml = _mutate(
             textwrap.dedent(

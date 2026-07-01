@@ -2507,6 +2507,7 @@ def safe_blob_path(run_path: Path, ref: str) -> Path:
 
 CONFIGURABLE_PROMPT_AGENT = "proofstack.agents.configurable_prompt.ConfigurablePromptAgent"
 CONFIGURABLE_CLI_AGENT = "proofstack.agents.configurable_cli.ConfigurableCLIAgent"
+HUMAN_AGENT = "proofstack.agents.human_agent.HumanAgent"
 DEFAULT_MODEL_ROOT = CONFIGS_ROOT / "models"
 
 
@@ -2926,6 +2927,8 @@ def mutate_preset_yaml(raw_yaml: str, operation: dict[str, Any]) -> dict[str, An
             _op_update_node(raw, operation)
         elif op == "update_component":
             _op_update_component(raw, operation)
+        elif op == "set_executor":
+            _op_set_executor(raw, operation)
         elif op == "update_node_inputs":
             _op_update_node_inputs(raw, operation)
         elif op == "update_node_outputs":
@@ -4185,6 +4188,165 @@ def _op_update_component(raw: dict[str, Any], operation: dict[str, Any]) -> None
         if key in handled_fields or str(key).startswith("__"):
             continue
         cfg[str(key)] = value
+
+
+# Component config keys owned by the executor; replaced wholesale on a swap.
+# Task-identity keys (prompt, schemas, output_files, done_outputs, tools) are
+# preserved so a component keeps meaning the same work whoever executes it.
+_EXECUTOR_OWNED_KEYS = (
+    "cmd",
+    "env",
+    "usage",
+    "sandbox",
+    "codex_sandbox",
+    "copy_codex_auth",
+    "model",
+    "model_reasoning_effort",
+    "soft_timeout_s",
+    "cache_enabled",
+    "contract",
+    "messages",
+    "output",
+)
+
+_EXECUTOR_AGENTS = {
+    "api": CONFIGURABLE_PROMPT_AGENT,
+    "claude_cli": CONFIGURABLE_CLI_AGENT,
+    "codex_cli": CONFIGURABLE_CLI_AGENT,
+    "human": HUMAN_AGENT,
+}
+
+
+def _iter_agent_nodes(nodes: Any):
+    if not isinstance(nodes, list):
+        return
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if node.get("kind") == "agent":
+            yield node
+        body = node.get("body")
+        if isinstance(body, dict):
+            yield from _iter_agent_nodes(body.get("nodes"))
+
+
+def _api_output_config(cfg: dict[str, Any]) -> dict[str, Any] | None:
+    """Derive the API output extraction spec from the component's output fields.
+
+    Single text output -> the whole response is that field (default_field).
+    Several -> xml_tags per field, so parse_output can split the response.
+    """
+    mechanics = {"workspace", "status", "summary"}
+    fields = [str(f) for f in (cfg.get("output_files") or {}) if str(f) not in mechanics]
+    if not fields:
+        schema = cfg.get("output_schema") or {}
+        fields = [str(f) for f in schema if str(f) not in mechanics]
+    if not fields:
+        return None
+    if len(fields) == 1:
+        return {"default_field": fields[0]}
+    return {"xml_tags": fields, "default_field": fields[0]}
+
+
+def _op_set_executor(raw: dict[str, Any], operation: dict[str, Any]) -> None:
+    executor = str(operation.get("executor") or "")
+    agent_cls = _EXECUTOR_AGENTS.get(executor)
+    if agent_cls is None:
+        raise PresetError(f"unknown executor: {executor!r}")
+    name = str(operation.get("name") or "")
+    if not name:
+        raise PresetError("set_executor requires a component name")
+    components = _components(raw)
+    cfg = components.get(name)
+    if not isinstance(cfg, dict):
+        raise PresetError(f"unknown component: {name!r}")
+
+    # Normalize the prompt text across executor conventions: API components use
+    # system_prompt/user_prompt, CLI and human components use prompt.
+    if executor == "api":
+        if cfg.get("prompt") and not cfg.get("user_prompt"):
+            cfg["user_prompt"] = str(cfg.pop("prompt"))
+    else:
+        if cfg.get("user_prompt") and not cfg.get("prompt"):
+            system = str(cfg.pop("system_prompt", "") or "").strip()
+            user = str(cfg.pop("user_prompt") or "")
+            cfg["prompt"] = f"{system}\n\n{user}" if system else user
+
+    for key in _EXECUTOR_OWNED_KEYS:
+        cfg.pop(key, None)
+
+    if executor == "claude_cli":
+        cfg.update(
+            {
+                "cmd": [
+                    "claude",
+                    "-p",
+                    "--output-format",
+                    "stream-json",
+                    "--verbose",
+                    "--model",
+                    "sonnet",
+                    "--permission-mode",
+                    "acceptEdits",
+                    "--allowedTools",
+                    "Bash(finish:*)",
+                ],
+                "soft_timeout_s": 780,
+                "sandbox": {"backend": "subprocess", "timeout_s": 900},
+                "env": {"HOME": "{env:HOME}"},
+                "usage": {"type": "claude_json"},
+                "cache_enabled": True,
+                "contract": "auto",
+            }
+        )
+    elif executor == "codex_cli":
+        cfg.update(
+            {
+                "cmd": [
+                    "codex",
+                    "exec",
+                    "--ignore-user-config",
+                    "--skip-git-repo-check",
+                    "--ephemeral",
+                    "--json",
+                ],
+                "model": "gpt-5.4-mini",
+                "model_reasoning_effort": "medium",
+                "codex_sandbox": "auto",
+                "copy_codex_auth": True,
+                "soft_timeout_s": 780,
+                "sandbox": {"backend": "subprocess", "timeout_s": 900},
+                "cache_enabled": True,
+                "contract": "auto",
+            }
+        )
+    elif executor == "api":
+        cfg["model"] = "models/anthropic/sonnet_46"
+        output = _api_output_config(cfg)
+        if output is not None:
+            cfg["output"] = output
+            _ensure_multi_output_prompt_instruction(cfg, output)
+
+    if executor in ("claude_cli", "codex_cli"):
+        # The CLI executor reports its sandbox as a workspace output (and can
+        # accept one as input); make sure the schemas declare it.
+        for schema_key in ("input_schema", "output_schema"):
+            schema = cfg.get(schema_key)
+            if isinstance(schema, dict):
+                schema.setdefault("workspace", "string")
+        out_schema = cfg.get("output_schema")
+        if isinstance(out_schema, dict):
+            out_schema.setdefault("status", "string")
+    elif executor == "human":
+        # workspace is CLI mechanics; a human answers through the web form.
+        for schema_key in ("input_schema", "output_schema"):
+            schema = cfg.get(schema_key)
+            if isinstance(schema, dict):
+                schema.pop("workspace", None)
+
+    for node in _iter_agent_nodes((raw.get("dag") or {}).get("nodes")):
+        if str(node.get("name") or "") == name:
+            node["agent"] = agent_cls
 
 
 def _op_update_node_inputs(raw: dict[str, Any], operation: dict[str, Any]) -> None:

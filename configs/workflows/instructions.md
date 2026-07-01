@@ -235,6 +235,17 @@ backends (CLI, API, human). Components with unusual delivery semantics (e.g. a
 file that must contain EXACTLY one word) should state those constraints in the
 prompt body; the tail only covers the mechanics.
 
+### Switching a component's executor
+
+In the dashboard preset editor, every agent node has an **Executor** dropdown
+(API model / Claude CLI / Codex CLI / Human). Switching keeps the component's
+task identity (prompt, `input_schema`/`output_schema`, `output_files`,
+`done_outputs`, tools) and replaces the executor-owned keys (`cmd`, `env`,
+`usage`, `sandbox`, `model`, `contract`, ...) with defaults for the new
+executor; the node's `agent:` class is updated everywhere the component is
+used. CLI executors get `contract: auto`; the API executor maps a single text
+output to `output.default_field` (multiple outputs become `xml_tags`).
+
 ## Tools
 
 Put tools on the component, not the node. Use `tool_refs` for tools defined in `configs/tools`.
