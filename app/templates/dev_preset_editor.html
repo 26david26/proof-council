@@ -4903,9 +4903,16 @@
 
         async function onExecutorChange(name, executor, current, select) {
             if (executor === current) return;
+            // Almost always a component backs exactly one node; only warn about
+            // shared components when the switch really would change several nodes.
+            const nodes = (currentCanvasNodes && currentCanvasNodes.length) ? currentCanvasNodes : (currentReport.nodes || []);
+            const users = nodes.filter((node) => node?.agent && (node.component_key || node.name || '') === name);
+            const shared = users.length > 1
+                ? ` Note: ${users.length} nodes share this component (${users.map((node) => displayLabel(node)).join(', ')}); all of them switch together.`
+                : '';
             const ok = await confirmAction({
                 title: 'Switch executor?',
-                message: `Run "${name}" as ${executorLabels[executor] || executor}? The prompt and inputs/outputs are kept; executor settings (command, model, sandbox) are reset to defaults for the new executor. This applies to every node using this component.`,
+                message: `Run "${name}" as ${executorLabels[executor] || executor}? Its prompt and inputs/outputs are kept; its executor settings (command, model, sandbox) are replaced by defaults for the new executor. Other nodes are not affected.${shared}`,
                 confirmLabel: 'Switch',
             });
             if (!ok) {
