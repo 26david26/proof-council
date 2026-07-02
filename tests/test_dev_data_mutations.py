@@ -456,6 +456,10 @@ class DevDataMutationTests(unittest.TestCase):
         self.assertIs(cfg["copy_codex_auth"], True)
         self.assertIs(cfg["sandbox"]["docker_no_new_privileges"], False)
         self.assertEqual(cfg["usage"]["type"], "codex_jsonl")
+        # Built on the shared executor scaffold: delivery mechanics are
+        # auto-appended, so the starter prompt must not hand-write them.
+        self.assertEqual(cfg["contract"], "auto")
+        self.assertNotIn("finish", cfg["prompt"])
 
     EXECUTOR_FIXTURE = textwrap.dedent(
         """

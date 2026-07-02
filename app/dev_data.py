@@ -4245,6 +4245,70 @@ def _workflow_model_binding(raw: dict[str, Any], knobs: tuple[str, ...]) -> str 
     return None
 
 
+def _executor_scaffold(executor: str, raw: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Executor-owned config defaults for a component.
+
+    The single source of truth for what each executor's plumbing looks like —
+    used by both set_executor and the add-node CLI template so the two cannot
+    drift. CLI models bind to a declared workflow knob when `raw` is given.
+    """
+    if executor == "claude_cli":
+        model_arg = (
+            _workflow_model_binding(raw, ("claude_model", "base_model")) if raw else None
+        ) or "sonnet"
+        return {
+            "cmd": [
+                "claude",
+                "-p",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--model",
+                model_arg,
+                "--permission-mode",
+                "acceptEdits",
+                "--allowedTools",
+                "Bash(finish:*)",
+            ],
+            "soft_timeout_s": 780,
+            "sandbox": {"backend": "subprocess", "timeout_s": 900},
+            "env": {"HOME": "{env:HOME}"},
+            "usage": {"type": "claude_json"},
+            "cache_enabled": True,
+            "contract": "auto",
+        }
+    if executor == "codex_cli":
+        binding = (
+            _workflow_model_binding(raw, ("codex_model", "gpt_model")) if raw else None
+        )
+        cmd = [
+            "codex",
+            "exec",
+            "--ignore-user-config",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--json",
+        ]
+        scaffold: dict[str, Any] = {
+            "cmd": cmd,
+            "model_reasoning_effort": "medium",
+            "codex_sandbox": "auto",
+            "copy_codex_auth": True,
+            "soft_timeout_s": 780,
+            "sandbox": {"backend": "subprocess", "timeout_s": 900},
+            "cache_enabled": True,
+            "contract": "auto",
+        }
+        if binding:
+            cmd += ["-m", binding]
+        else:
+            scaffold["model"] = "gpt-5.4-mini"
+        return scaffold
+    if executor == "api":
+        return {"model": "models/anthropic/sonnet_46"}
+    return {}  # human: prompt + schemas only
+
+
 def _api_output_config(cfg: dict[str, Any]) -> dict[str, Any] | None:
     """Derive the API output extraction spec from the component's output fields.
 
@@ -4290,61 +4354,8 @@ def _op_set_executor(raw: dict[str, Any], operation: dict[str, Any]) -> None:
     for key in _EXECUTOR_OWNED_KEYS:
         cfg.pop(key, None)
 
-    if executor == "claude_cli":
-        # Bind the model to a declared workflow knob so tiered presets keep
-        # steering the node; only fall back to a literal when no knob exists.
-        model_arg = _workflow_model_binding(raw, ("claude_model", "base_model")) or "sonnet"
-        cfg.update(
-            {
-                "cmd": [
-                    "claude",
-                    "-p",
-                    "--output-format",
-                    "stream-json",
-                    "--verbose",
-                    "--model",
-                    model_arg,
-                    "--permission-mode",
-                    "acceptEdits",
-                    "--allowedTools",
-                    "Bash(finish:*)",
-                ],
-                "soft_timeout_s": 780,
-                "sandbox": {"backend": "subprocess", "timeout_s": 900},
-                "env": {"HOME": "{env:HOME}"},
-                "usage": {"type": "claude_json"},
-                "cache_enabled": True,
-                "contract": "auto",
-            }
-        )
-    elif executor == "codex_cli":
-        binding = _workflow_model_binding(raw, ("codex_model", "gpt_model"))
-        cmd = [
-            "codex",
-            "exec",
-            "--ignore-user-config",
-            "--skip-git-repo-check",
-            "--ephemeral",
-            "--json",
-        ]
-        if binding:
-            cmd += ["-m", binding]
-        cfg.update(
-            {
-                "cmd": cmd,
-                "model_reasoning_effort": "medium",
-                "codex_sandbox": "auto",
-                "copy_codex_auth": True,
-                "soft_timeout_s": 780,
-                "sandbox": {"backend": "subprocess", "timeout_s": 900},
-                "cache_enabled": True,
-                "contract": "auto",
-            }
-        )
-        if not binding:
-            cfg["model"] = "gpt-5.4-mini"
-    elif executor == "api":
-        cfg["model"] = "models/anthropic/sonnet_46"
+    cfg.update(_executor_scaffold(executor, raw))
+    if executor == "api":
         output = _api_output_config(cfg)
         if output is not None:
             cfg["output"] = output
@@ -5620,29 +5631,26 @@ def _import_class(path: str) -> type:
 
 
 def _cli_component_template() -> dict[str, Any]:
-    return {
-        "cmd": [
-            "codex",
-            "exec",
-            "--ignore-user-config",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "--json",
-        ],
-        "model": "gpt-5.4-mini",
-        "model_reasoning_effort": "low",
-        "codex_sandbox": "auto",
-        "copy_codex_auth": True,
-        "prompt": (
-            "Complete this CLI task. Write any requested files in the workspace. "
-            "When finished, run: finish '{\"status\":\"done\",\"summary\":\"completed\"}'"
-        ),
-        "input_schema": {},
-        "sandbox": {"timeout_s": 900, "backend": "docker", "docker_no_new_privileges": False},
-        "output_schema": {"workspace": "string", "status": "string", "summary": "string"},
-        "done_outputs": {"status": "status", "summary": "summary"},
-        "usage": {"type": "codex_jsonl", "model": "gpt-5.4-mini", "cost_config": "models/openai/gpt-54-mini"},
-    }
+    # Built on the shared codex executor scaffold (see _executor_scaffold) so
+    # editor-created CLI nodes and executor switches cannot drift apart. The
+    # add-node specifics layered on top: a Docker sandbox (safer default for
+    # arbitrary tasks), metered usage, and a starter prompt + schemas. The
+    # scaffold's `contract: auto` supplies the finish/delivery mechanics, so
+    # the starter prompt describes only the task.
+    cfg = _executor_scaffold("codex_cli")
+    cfg.update(
+        {
+            "model": "gpt-5.4-mini",
+            "model_reasoning_effort": "low",
+            "prompt": "Complete this CLI task. Write any requested files in the workspace.",
+            "input_schema": {},
+            "sandbox": {"timeout_s": 900, "backend": "docker", "docker_no_new_privileges": False},
+            "output_schema": {"workspace": "string", "status": "string", "summary": "string"},
+            "done_outputs": {"status": "status", "summary": "summary"},
+            "usage": {"type": "codex_jsonl", "model": "gpt-5.4-mini", "cost_config": "models/openai/gpt-54-mini"},
+        }
+    )
+    return cfg
 
 
 def _latex_cli_component_template() -> dict[str, Any]:
