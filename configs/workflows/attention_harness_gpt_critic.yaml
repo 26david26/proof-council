@@ -41,7 +41,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @framing (a line like '@framing: ...'). Address exactly that request.\n  If @framing does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new framing needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSet the problem up cleanly for the team:\n- restate it precisely, fixing notation;\n- say what a valid answer must look like (what counts as yes/no, and exactly what a\n  'maximal' object must satisfy);\n- list the natural reductions / special cases worth separating (e.g. finite vs\n  infinite extension, the affine-local picture);\n- name the key objects briefly and flag the main uncertainties the proof must resolve.\nThis frames the work; it is NOT a proof or a literature survey.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, you have been woken because the EDITOR'S HANDOFF below requests you\n  with your token @framing (a line like '@framing: ...'). Find that request and\n  address exactly it. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSet the problem up cleanly for the team:\n- restate it precisely, fixing notation;\n- say what a valid answer must look like (what counts as yes/no, and exactly what a\n  'maximal' object must satisfy);\n- list the natural reductions / special cases worth separating (e.g. finite vs\n  infinite extension, the affine-local picture);\n- name the key objects briefly and flag the main uncertainties the proof must resolve.\nThis frames the work; it is NOT a proof or a literature survey.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -78,7 +78,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @analogy (a line like '@analogy: ...'). Address exactly that request.\n  If @analogy does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new analogy needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSuggest analogous problems, standard proof templates, or strategies that have worked on\nsimilar problems, flagging how promising vs speculative each is.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, you have been woken because the EDITOR'S HANDOFF below requests you\n  with your token @analogy (a line like '@analogy: ...'). Find that request and\n  address exactly it. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSuggest analogous problems, standard proof templates, or strategies that have worked on\nsimilar problems, flagging how promising vs speculative each is.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -364,7 +364,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @cleandef (a line like '@cleandef: ...'). Address exactly that request.\n  If @cleandef does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new definition needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nIdentify the central definition(s) the proof relies on and propose the SINGLE most\nvaluable reformulation — an equivalent restatement that most improves tractability.\nState it precisely, explain in 1-2 sentences why it is equivalent (flag if unsure), and\none sentence on why you chose it over alternatives. Output exactly one reformulation.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, you have been woken because the EDITOR'S HANDOFF below requests you\n  with your token @cleandef (a line like '@cleandef: ...'). Find that request and\n  address exactly it. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nIdentify the central definition(s) the proof relies on and propose the SINGLE most\nvaluable reformulation — an equivalent restatement that most improves tractability.\nState it precisely, explain in 1-2 sentences why it is equivalent (flag if unsure), and\none sentence on why you chose it over alternatives. Output exactly one reformulation.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -401,7 +401,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @litsearch (a line like '@litsearch: ...'). Address exactly that request.\n  If @litsearch does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new literature needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSearch the literature for results, lemmas, or techniques directly relevant to the\nproblem and the current sticking points. For each: a precise citation; the statement\nVERBATIM (hypotheses + conclusion, exact conditions); which step it discharges and what\nmust still be checked to apply it; whether it needs adaptation. Emit a references.bib\nblock. If nothing is clearly relevant, say so rather than inventing citations.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, you have been woken because the EDITOR'S HANDOFF below requests you\n  with your token @litsearch (a line like '@litsearch: ...'). Find that request and\n  address exactly it. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nSearch the literature for results, lemmas, or techniques directly relevant to the\nproblem and the current sticking points. For each: a precise citation; the statement\nVERBATIM (hypotheses + conclusion, exact conditions); which step it discharges and what\nmust still be checked to apply it; whether it needs adaptation. Emit a references.bib\nblock. If nothing is clearly relevant, say so rather than inventing citations.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -438,7 +438,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, read the EDITOR'S HANDOFF below. ONLY act if it explicitly requests you\n  with your token @compute (a line like '@compute: ...'). Address exactly that request.\n  If @compute does NOT appear, your ENTIRE output must be the single line:\n      SKIP: no new computation needed this round.\n  Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nDesign and, where practical, ACTUALLY RUN small concrete checks of the current claims:\n- construct small explicit cases (low dimension, specific rings/ideals, specific field\n  extensions) and work out the answer there;\n- try to break any stated claim on a toy case — a single caught failure is high-value;\n- where a check is genuinely computational (ideal membership, a principality test, a\n  small Groebner/resultant computation), WRITE AND RUN actual code (python/sympy) to\n  settle it rather than reasoning by hand — you have a shell.\nReport the cases, what you computed, and any claim they support or refute.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
+    prompt: "You are a BACKGROUND specialist. You do NOT produce fresh output every round.\n\n- If the CURRENT PROOF ATTEMPT below is EMPTY, this is round 1: do your full job now.\n- Otherwise, you have been woken because the EDITOR'S HANDOFF below requests you\n  with your token @compute (a line like '@compute: ...'). Find that request and\n  address exactly it. Do not repeat earlier work.\n\nYOUR FULL JOB (round 1, or when requested):\nDesign and, where practical, ACTUALLY RUN small concrete checks of the current claims:\n- construct small explicit cases (low dimension, specific rings/ideals, specific field\n  extensions) and work out the answer there;\n- try to break any stated claim on a toy case — a single caught failure is high-value;\n- where a check is genuinely computational (ideal membership, a principality test, a\n  small Groebner/resultant computation), WRITE AND RUN actual code (python/sympy) to\n  settle it rather than reasoning by hand — you have a shell.\nReport the cases, what you computed, and any claim they support or refute.\n\nProblem:\n{problem}\n\nCurrent proof attempt (empty on round 1):\n{proof}\n\nEditor's handoff / feedback from last round (may be empty):\n{memory}\n"
     input_schema:
       problem: string
       proof: string
@@ -606,6 +606,12 @@ dag:
         ui:
           x: 459
           y: -445
+        when:
+          python: (not inputs.get("proof", "").strip()) or ("@framing" in inputs.get("memory", ""))
+        default:
+          workspace: ''
+          hint: 'SKIP: not requested by the editor this round.'
+          status: skipped
       - id: analogy
         kind: agent
         agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
@@ -617,6 +623,12 @@ dag:
         ui:
           x: 481
           y: -247
+        when:
+          python: (not inputs.get("proof", "").strip()) or ("@analogy" in inputs.get("memory", ""))
+        default:
+          workspace: ''
+          hint: 'SKIP: not requested by the editor this round.'
+          status: skipped
       - id: tactician
         kind: agent
         agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
@@ -672,6 +684,12 @@ dag:
         ui:
           x: 491
           y: 491
+        when:
+          python: (not inputs.get("proof", "").strip()) or ("@cleandef" in inputs.get("memory", ""))
+        default:
+          workspace: ''
+          hint: 'SKIP: not requested by the editor this round.'
+          status: skipped
       - id: litsearch
         kind: agent
         agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
@@ -683,6 +701,12 @@ dag:
         ui:
           x: 491
           y: 631
+        when:
+          python: (not inputs.get("proof", "").strip()) or ("@litsearch" in inputs.get("memory", ""))
+        default:
+          workspace: ''
+          hint: 'SKIP: not requested by the editor this round.'
+          status: skipped
       - id: compute
         kind: agent
         agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
@@ -694,6 +718,12 @@ dag:
         ui:
           x: 491
           y: 771
+        when:
+          python: (not inputs.get("proof", "").strip()) or ("@compute" in inputs.get("memory", ""))
+        default:
+          workspace: ''
+          hint: 'SKIP: not requested by the editor this round.'
+          status: skipped
       - id: synthesize
         kind: agent
         needs:

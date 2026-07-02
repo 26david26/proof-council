@@ -141,6 +141,36 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
             )
         )
 
+    def test_council_background_specialist_gates_spawn_only_when_needed(self) -> None:
+        # The gpt_critic council gates its background specialists with when:
+        # conditions so a not-requested node never spawns (zero tokens) and
+        # downstream consumers read its default: hint instead.
+        import yaml
+
+        preset = yaml.safe_load(
+            (ROOT / "configs" / "workflows" / "attention_harness_gpt_critic.yaml").read_text()
+        )
+        body = preset["dag"]["nodes"][0]["body"]["nodes"]
+        gated = {n["id"]: n for n in body if "when" in n}
+
+        self.assertEqual(
+            set(gated), {"premise", "analogy", "cleandef", "litsearch", "compute"}
+        )
+        analogy = gated["analogy"]
+
+        def scope(proof, memory):
+            return {"inputs": {"proof": proof, "memory": memory}}
+
+        # Round 1 (no proof yet): everyone runs.
+        self.assertTrue(_condition(analogy["when"], scope("", "")))
+        # Later round, not requested: node is skipped entirely.
+        self.assertFalse(_condition(analogy["when"], scope("\\documentclass...", "@compute: check X")))
+        # Later round, requested by the editor: node wakes.
+        self.assertTrue(_condition(analogy["when"], scope("\\documentclass...", "@analogy: try Y")))
+        # A skipped node still feeds downstream consumers via its default hint.
+        self.assertIn("hint", analogy["default"])
+        self.assertIn("SKIP", analogy["default"]["hint"])
+
     def test_build_outputs_can_coalesce_mutually_exclusive_branch_results(self) -> None:
         workflow = DAGWorkflow.__new__(DAGWorkflow)
         state = {
