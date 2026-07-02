@@ -156,9 +156,11 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
         self.assertEqual(
             set(gated),
             {"premise", "analogy", "cleandef", "litsearch", "compute",
-             "lemma", "counterex", "tactician"},
+             "lemma", "counterex"},
         )
-        self.assertNotIn("human", gated)  # human always runs
+        # human and tactician run every round (ungated).
+        self.assertNotIn("human", gated)
+        self.assertNotIn("tactician", gated)
 
         def runs(node_id, *, strategy, memory=""):
             return _condition(
@@ -176,11 +178,11 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
         # ON-TRACK roster: lemma + counterex run; the ideation/background ones sleep.
         for nid in ("lemma", "counterex"):
             self.assertTrue(runs(nid, strategy="on-track"), nid)
-        for nid in ("premise", "analogy", "cleandef", "litsearch", "compute", "tactician"):
+        for nid in ("premise", "analogy", "cleandef", "litsearch", "compute"):
             self.assertFalse(runs(nid, strategy="on-track"), nid)
 
-        # PIVOT roster: framing/analogy/cleandef/litsearch/tactician run; provers sleep.
-        for nid in ("premise", "analogy", "cleandef", "litsearch", "tactician"):
+        # PIVOT roster: framing/analogy/cleandef/litsearch run; provers sleep.
+        for nid in ("premise", "analogy", "cleandef", "litsearch"):
             self.assertTrue(runs(nid, strategy="pivot"), nid)
         for nid in ("lemma", "counterex", "compute"):
             self.assertFalse(runs(nid, strategy="pivot"), nid)
