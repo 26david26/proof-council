@@ -1,9 +1,9 @@
 # Cross-provider council (revised): Claude specialists + Codex (GPT) lemma & critic,
-# an editor/reconciler that emits ONE integrated doc with disputes flagged, and lean
-# rounds -- background specialists (framing/litsearch/cleandef/analogy/compute) run in
-# round 1 or when the editor's handoff requests them by @token. Model knobs: base_model
-# (specialists), key_model (synth/author/reconciler), gpt_model (lemma + critic).
-# Delivery mechanics (files + finish) are auto-appended via `contract: auto`.
+# an editor/reconciler that emits ONE integrated doc with visible \dispute{...} boxes,
+# and lean rounds -- background specialists (framing/litsearch/cleandef/analogy/compute)
+# run in round 1 or when the editor's handoff requests them by @token. Model knobs:
+# base_model (specialists), key_model (synth/author/reconciler), gpt_model (lemma +
+# critic). Delivery mechanics (files + finish) are auto-appended via `contract: auto`.
 # Requires Claude and OpenAI/codex subscription auth.
 workflow: proofstack.agents.dag_workflow.DAGWorkflow
 description: 'Cross-provider council: Claude specialists + Codex (GPT) lemma prover and critic, an editor/reconciler that emits one integrated doc, and lean rounds (background specialists run round 1 or on request). Model knobs: base_model, key_model, gpt_model. Needs Claude and OpenAI/codex auth.'
@@ -113,7 +113,7 @@ components:
       {proof}
 
 
-      Critic''s feedback from last round (may be empty):
+      Editor''s handoff from last round (open points and requests; may be empty):
 
       {memory}
 
@@ -191,7 +191,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the author/documenter for a mathematical research workflow. Your job\nis to turn the focused brief below into the clearest possible LaTeX progress\ndocument. If the ingredients are enough for a complete proof, write a\ncomplete rigorous proof. If they are not enough, do not pretend they are:\nwrite a clean partial proof, clearly separate established steps from\nconjectural or unfinished steps, and state exactly what remains to be proved.\n\nYou may use web search to verify a fact, confirm a cited result, or look up a\nprecise statement you are about to rely on. Do this when it removes a gap, not\nas a detour. Add any source you actually use to a references.bib file and cite\nit in answer.tex.\n\nProblem:\n{problem}\n\nFocused brief (synthesized from the specialists):\n{brief}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nCritic's feedback from last round (may be empty):\n{memory}\n\nYour deliverable is a self-contained LaTeX document. It should include:\n1. a concise status paragraph saying whether this is a complete proof or a\n   progress report;\n2. the cleanest rigorous argument currently justified by the brief and prior\n   attempt;\n3. a clearly marked section listing the remaining gaps, missing lemmas, or\n   checks still needed.\n"
+    prompt: "You are the author/documenter for a mathematical research workflow. Your job\nis to turn the focused brief below into the clearest possible LaTeX progress\ndocument. If the ingredients are enough for a complete proof, write a\ncomplete rigorous proof. If they are not enough, do not pretend they are:\nwrite a clean partial proof, clearly separate established steps from\nconjectural or unfinished steps, and state exactly what remains to be proved.\n\nYou may use web search to verify a fact, confirm a cited result, or look up a\nprecise statement you are about to rely on. Do this when it removes a gap, not\nas a detour. Add any source you actually use to a references.bib file and cite\nit in answer.tex.\n\nProblem:\n{problem}\n\nFocused brief (synthesized from the specialists):\n{brief}\n\nCurrent proof attempt (may be empty on round 1):\n{proof}\n\nEditor's handoff from last round (open points and requests; may be empty):\n{memory}\n\nYour deliverable is a self-contained LaTeX document. It should include:\n1. a concise status paragraph saying whether this is a complete proof or a\n   progress report;\n2. the cleanest rigorous argument currently justified by the brief and prior\n   attempt;\n3. a clearly marked section listing the remaining gaps, missing lemmas, or\n   checks still needed.\n"
     input_schema:
       problem: string
       brief: string
@@ -250,7 +250,7 @@ components:
       {proof}
 
 
-      Critic''s feedback from last round (may be empty):
+      Editor''s handoff from last round (open points and requests; may be empty):
 
       {memory}
 
@@ -323,7 +323,7 @@ components:
       {proof}
 
 
-      Critic''s feedback from last round (may be empty):
+      Editor''s handoff from last round (open points and requests; may be empty):
 
       {memory}
 
@@ -565,7 +565,7 @@ components:
     cache_enabled: true
     usage:
       type: claude_json
-    prompt: "You are the council EDITOR. You are handed the author's current LaTeX draft and the\ncritic's feedback on it. Produce ONE integrated document the human can read in a\nsingle pass — do NOT leave them to reconcile a draft against a separate critique.\n\nWrite integrated.tex: the author's document with the critic's corrections applied\ninline where the critic is clearly right. Where author and critic genuinely disagree,\nor a point is unresolved, KEEP the text but flag it in place with a visible marker\nline beginning\n    % >>> DISPUTE: <one-line statement of the open question>\nso every unresolved issue is visible where it lives. Do not silently drop the\nauthor's work, and do not assert a step you cannot see is justified.\n\nAlso write handoff.md, a short editor's handoff for the next round:\n- OPEN: unresolved points (the disputes), most important first.\n- REQUESTS: optional lines asking a background specialist to help next round, using\n  the exact tokens @framing, @litsearch, @cleandef, @analogy, @compute — e.g.\n  '@compute: check whether (x)+(y) is principal in k[x,y]_(x,y)'. Only request a\n  specialist when it would actually unblock an OPEN point; otherwise omit.\n\nProblem:\n{problem}\n\nAuthor's current draft (LaTeX):\n{draft}\n\nCritic's feedback:\n{critique}\n"
+    prompt: "You are the council EDITOR. You are handed the author's current LaTeX draft and the\ncritic's feedback on it. Produce ONE integrated document the human can read in a\nsingle pass — do NOT leave them to reconcile a draft against a separate critique.\n\nWrite integrated.tex: the author's document with the critic's corrections applied\ninline where the critic is clearly right. Where author and critic genuinely disagree,\nor a point is unresolved, KEEP the text but flag it in place with a VISIBLE box that\nsurvives compilation (never a % comment - comments vanish in the PDF):\n    \\dispute{<one-line statement of the open question>}\nand add this macro to the preamble:\n    \\providecommand{\\dispute}[1]{\\par\\medskip\\noindent\n    \\fbox{\\parbox{\\dimexpr\\linewidth-2\\fboxsep-2\\fboxrule\\relax}\n    {\\textbf{>>> DISPUTE:} #1}}\\par\\medskip}\nso every unresolved issue is visible where it lives, in the PDF too. Do not silently drop the\nauthor's work, and do not assert a step you cannot see is justified.\n\nAlso write handoff.md, a short editor's handoff for the next round:\n- OPEN: unresolved points (the disputes), most important first.\n- REQUESTS: optional lines asking a background specialist to help next round, using\n  the exact tokens @framing, @litsearch, @cleandef, @analogy, @compute — e.g.\n  '@compute: check whether (x)+(y) is principal in k[x,y]_(x,y)'. Only request a\n  specialist when it would actually unblock an OPEN point; otherwise omit.\n\nProblem:\n{problem}\n\nAuthor's current draft (LaTeX):\n{draft}\n\nCritic's feedback:\n{critique}\n"
     input_schema:
       problem: string
       draft: string
