@@ -141,10 +141,11 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
             )
         )
 
-    def test_council_background_specialist_gates_spawn_only_when_needed(self) -> None:
-        # The gpt_critic council gates its background specialists with when:
-        # conditions so a not-requested node never spawns (zero tokens) and
-        # downstream consumers read its default: hint instead.
+    def test_council_roster_depends_on_reconciler_verdict(self) -> None:
+        # The gpt_critic council picks each round's roster from the reconciler's
+        # one-word verdict (strategy): a not-on-roster specialist never spawns
+        # (zero tokens) and downstream consumers read its default: hint. The
+        # human node is ungated (runs every round).
         import yaml
 
         preset = yaml.safe_load(
@@ -152,24 +153,44 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
         )
         body = preset["dag"]["nodes"][0]["body"]["nodes"]
         gated = {n["id"]: n for n in body if "when" in n}
-
         self.assertEqual(
-            set(gated), {"premise", "analogy", "cleandef", "litsearch", "compute"}
+            set(gated),
+            {"premise", "analogy", "cleandef", "litsearch", "compute",
+             "lemma", "counterex", "tactician"},
         )
-        analogy = gated["analogy"]
+        self.assertNotIn("human", gated)  # human always runs
 
-        def scope(proof, memory):
-            return {"inputs": {"proof": proof, "memory": memory}}
+        def runs(node_id, *, strategy, memory=""):
+            return _condition(
+                gated[node_id]["when"],
+                {"proof": "\\documentclass...", "strategy": strategy, "memory": memory},
+            )
 
-        # Round 1 (no proof yet): everyone runs.
-        self.assertTrue(_condition(analogy["when"], scope("", "")))
-        # Later round, not requested: node is skipped entirely.
-        self.assertFalse(_condition(analogy["when"], scope("\\documentclass...", "@compute: check X")))
-        # Later round, requested by the editor: node wakes.
-        self.assertTrue(_condition(analogy["when"], scope("\\documentclass...", "@analogy: try Y")))
+        # Round 1 (no proof carried in yet): everyone is seeded regardless.
+        for nid in gated:
+            self.assertTrue(
+                _condition(gated[nid]["when"], {"proof": "", "strategy": "", "memory": ""}),
+                nid,
+            )
+
+        # ON-TRACK roster: lemma + counterex run; the ideation/background ones sleep.
+        for nid in ("lemma", "counterex"):
+            self.assertTrue(runs(nid, strategy="on-track"), nid)
+        for nid in ("premise", "analogy", "cleandef", "litsearch", "compute", "tactician"):
+            self.assertFalse(runs(nid, strategy="on-track"), nid)
+
+        # PIVOT roster: framing/analogy/cleandef/litsearch/tactician run; provers sleep.
+        for nid in ("premise", "analogy", "cleandef", "litsearch", "tactician"):
+            self.assertTrue(runs(nid, strategy="pivot"), nid)
+        for nid in ("lemma", "counterex", "compute"):
+            self.assertFalse(runs(nid, strategy="pivot"), nid)
+
+        # An @token wakes a specialist beyond the verdict's default roster.
+        self.assertTrue(runs("compute", strategy="on-track", memory="@compute: check X"))
+        self.assertTrue(runs("counterex", strategy="pivot", memory="@counterex: keep probing"))
+
         # A skipped node still feeds downstream consumers via its default hint.
-        self.assertIn("hint", analogy["default"])
-        self.assertIn("SKIP", analogy["default"]["hint"])
+        self.assertIn("SKIP", gated["analogy"]["default"]["hint"])
 
     def test_build_outputs_can_coalesce_mutually_exclusive_branch_results(self) -> None:
         workflow = DAGWorkflow.__new__(DAGWorkflow)
