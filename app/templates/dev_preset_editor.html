@@ -143,7 +143,7 @@
             executor: "Who runs this component: an API model, a subscription CLI (Claude or Codex), or a human. Switching keeps the prompt and inputs/outputs and swaps the executor settings (command, model, sandbox) to defaults.",
             model: "Model config used for this component's API call.",
             cliModel: "Model for this node. 'Default' inherits the workflow model; pick a specific model to override just this node.",
-            cliReasoningEffort: "Reasoning effort passed to Codex as model_reasoning_effort.",
+            cliReasoningEffort: "Reasoning effort for this node: --effort for Claude, model_reasoning_effort for Codex. 'default' uses the CLI's own default.",
             systemPrompt: "High-level instructions that set the component's role and behavior.",
             userPrompt: "The message template sent to the model for each run. Placeholders such as {problem} are filled from graph inputs.",
             promptVariables: "Optional type hints for prompt inputs. The input names are inferred from prompt placeholders.",

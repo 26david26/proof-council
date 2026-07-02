@@ -291,6 +291,50 @@ class ConfigurableCLITests(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--model") + 1], "opus")
             self.assertNotIn("sonnet", cmd)  # the override beats the workflow default
 
+    def test_claude_node_reasoning_effort_sets_effort_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ctx = RunContext.create(
+                run_id="test",
+                root_workdir=temp_dir,
+                flat=True,
+                component_configs={
+                    "cfg_cli": {
+                        "cmd": ["claude", "-p", "--model", "sonnet"],
+                        "model_reasoning_effort": "low",
+                        "prompt": "Problem: {problem}",
+                        "input_schema": {"problem": "string"},
+                    }
+                },
+            )
+            agent = ConfigurableCLIAgent(ctx, name="cfg_cli")
+
+            cmd = agent._command_for(agent.Inputs(problem="P"))
+
+            self.assertIn("--effort", cmd)
+            self.assertEqual(cmd[cmd.index("--effort") + 1], "low")
+
+    def test_claude_effort_maps_codex_minimal_and_rewrites_existing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ctx = RunContext.create(
+                run_id="test",
+                root_workdir=temp_dir,
+                flat=True,
+                component_configs={
+                    "cfg_cli": {
+                        "cmd": ["claude", "-p", "--effort", "high"],
+                        "model_reasoning_effort": "minimal",  # codex vocab
+                        "prompt": "Problem: {problem}",
+                        "input_schema": {"problem": "string"},
+                    }
+                },
+            )
+            agent = ConfigurableCLIAgent(ctx, name="cfg_cli")
+
+            cmd = agent._command_for(agent.Inputs(problem="P"))
+
+            self.assertEqual(cmd.count("--effort"), 1)
+            self.assertEqual(cmd[cmd.index("--effort") + 1], "low")
+
     def test_claude_node_without_override_uses_workflow_input(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             ctx = RunContext.create(

@@ -253,6 +253,9 @@ class ConfigurableCLIAgent(CLIAgent):
             model = str(self.component_config.get("model") or "").strip()
             if model:
                 cmd = _with_claude_model(cmd, model)
+            reasoning_effort = str(self.component_config.get("model_reasoning_effort") or "").strip()
+            if reasoning_effort and _is_claude_cmd(cmd):
+                cmd = _with_claude_effort(cmd, reasoning_effort)
         if self.component_config.get("prompt") and _is_codex_exec_cmd(cmd) and _codex_prompt_arg_index(cmd) is None:
             cmd = [*cmd, "-"]
         codex_sandbox = str(self.component_config.get("codex_sandbox") or "").strip()
@@ -419,6 +422,27 @@ def _with_claude_model(cmd: list[str], model: str) -> list[str]:
             out[i] = f"--model={model}"
             return out
     return [*out, "--model", model]
+
+
+def _is_claude_cmd(cmd: list[str]) -> bool:
+    return bool(cmd) and Path(cmd[0]).name == "claude"
+
+
+def _with_claude_effort(cmd: list[str], effort: str) -> list[str]:
+    """Set the claude CLI reasoning effort (``--effort low|medium|high|xhigh|max``).
+    The shared editor vocabulary includes codex's ``minimal``, which claude does
+    not accept — map it to ``low``."""
+    if effort == "minimal":
+        effort = "low"
+    out = list(cmd)
+    for i, part in enumerate(out):
+        if part == "--effort" and i + 1 < len(out):
+            out[i + 1] = effort
+            return out
+        if part.startswith("--effort="):
+            out[i] = f"--effort={effort}"
+            return out
+    return [*out, "--effort", effort]
 
 
 def _without_codex_model(cmd: list[str]) -> list[str]:
