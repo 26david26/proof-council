@@ -704,7 +704,7 @@ dag:
           x: 459
           y: -445
         when:
-          python: (not proof.strip()) or (strategy == "pivot") or ("@framing" in memory)
+          python: (not state.get("proof", "").strip()) or (state.get("strategy", "") == "pivot") or ("@framing" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'
@@ -721,7 +721,7 @@ dag:
           x: 481
           y: -247
         when:
-          python: (not proof.strip()) or (strategy == "pivot") or ("@analogy" in memory)
+          python: (not state.get("proof", "").strip()) or (state.get("strategy", "") == "pivot") or ("@analogy" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'
@@ -760,7 +760,7 @@ dag:
           x: 494
           y: -50
         when:
-          python: (not proof.strip()) or (strategy == "on-track") or ("@lemma" in memory)
+          python: (not state.get("proof", "").strip()) or (state.get("strategy", "") == "on-track") or ("@lemma" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'
@@ -777,7 +777,7 @@ dag:
           x: 491
           y: 351
         when:
-          python: (not proof.strip()) or (strategy == "on-track") or ("@counterex" in memory)
+          python: (not state.get("proof", "").strip()) or (state.get("strategy", "") == "on-track") or ("@counterex" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'
@@ -794,7 +794,7 @@ dag:
           x: 491
           y: 491
         when:
-          python: (not proof.strip()) or (strategy == "pivot") or ("@cleandef" in memory)
+          python: (not state.get("proof", "").strip()) or (state.get("strategy", "") == "pivot") or ("@cleandef" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'
@@ -811,7 +811,7 @@ dag:
           x: 491
           y: 631
         when:
-          python: (not proof.strip()) or (strategy == "pivot") or ("@litsearch" in memory)
+          python: (not state.get("proof", "").strip()) or (state.get("strategy", "") == "pivot") or ("@litsearch" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'
@@ -828,7 +828,7 @@ dag:
           x: 491
           y: 771
         when:
-          python: (not proof.strip()) or ("@compute" in memory)
+          python: (not state.get("proof", "").strip()) or ("@compute" in state.get("memory", ""))
         default:
           workspace: ''
           hint: 'SKIP: not on this round''s roster.'

@@ -17,6 +17,7 @@ from proofstack.agents.dag_workflow import (  # noqa: E402
     _agent_inputs_with_workflow_defaults,
     _condition,
     _eval_value,
+    _node_condition_scope,
     _resolve_path,
 )
 from proofstack.context import RunContext  # noqa: E402
@@ -162,18 +163,21 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
         self.assertNotIn("human", gated)
         self.assertNotIn("tactician", gated)
 
-        def runs(node_id, *, strategy, memory=""):
-            return _condition(
-                gated[node_id]["when"],
-                {"proof": "\\documentclass...", "strategy": strategy, "memory": memory},
-            )
+        # Evaluate each gate through the REAL scope builder: loop-carried vars
+        # live under scope["state"], so a bare-name gate would NameError here
+        # (as it did in production) — the earlier flat-scope test could not.
+        def runs(node_id, *, proof="\\documentclass...", strategy="", memory=""):
+            loop_state = {
+                "state": {"proof": proof, "strategy": strategy, "memory": memory},
+                "input": {},
+                "node": {},
+            }
+            scope = _node_condition_scope(gated[node_id], loop_state)
+            return _condition(gated[node_id]["when"], scope)
 
         # Round 1 (no proof carried in yet): everyone is seeded regardless.
         for nid in gated:
-            self.assertTrue(
-                _condition(gated[nid]["when"], {"proof": "", "strategy": "", "memory": ""}),
-                nid,
-            )
+            self.assertTrue(runs(nid, proof="", strategy=""), nid)
 
         # ON-TRACK roster: lemma + counterex run; the ideation/background ones sleep.
         for nid in ("lemma", "counterex"):
