@@ -154,6 +154,7 @@ components:
     output_schema:
       hint: string
       status: string
+    cache_enabled: true
   claude_synthesize:
     cmd:
     - claude
