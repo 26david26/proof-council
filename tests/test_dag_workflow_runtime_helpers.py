@@ -167,8 +167,14 @@ class DAGWorkflowRuntimeHelperTests(unittest.TestCase):
         # live under scope["state"], so a bare-name gate would NameError here
         # (as it did in production) — the earlier flat-scope test could not.
         def runs(node_id, *, proof="\\documentclass...", strategy="", memory=""):
+            # strategy.txt is read WITH its trailing newline in production, so
+            # mirror that here — the gate must strip it before matching.
             loop_state = {
-                "state": {"proof": proof, "strategy": strategy, "memory": memory},
+                "state": {
+                    "proof": proof,
+                    "strategy": (strategy + "\n") if strategy else "",
+                    "memory": memory,
+                },
                 "input": {},
                 "node": {},
             }
