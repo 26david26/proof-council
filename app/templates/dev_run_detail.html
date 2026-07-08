@@ -80,7 +80,15 @@
                         {% if field != 'status' %}
                             <label class="human-task-field">
                                 <span class="key">{{ field }}</span>
-                                <textarea name="f_{{ field }}" rows="12" spellcheck="false" placeholder="Type your {{ field }} here…"></textarea>
+                                {% if ftype and ftype.startswith('choice:') %}
+                                    <select name="f_{{ field }}">
+                                        {% for opt in ftype[7:].split('|') %}
+                                            <option value="{{ opt.strip() }}">{{ opt.strip() }}</option>
+                                        {% endfor %}
+                                    </select>
+                                {% else %}
+                                    <textarea name="f_{{ field }}" rows="12" spellcheck="false" placeholder="Type your {{ field }} here…"></textarea>
+                                {% endif %}
                             </label>
                         {% endif %}
                     {% endfor %}

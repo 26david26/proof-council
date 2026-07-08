@@ -245,7 +245,7 @@ components:
       proof: string
     output_schema:
       reply: string
-      verdict: string
+      verdict: 'choice: continue | stop'
     cache_enabled: true
 
 dag:
