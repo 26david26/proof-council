@@ -1,0 +1,303 @@
+# Research partner: ONE persistent agentic collaborator + the human at the
+# loop's hinge, with independent verification on demand.
+#
+# Design (vs the attention harness): no parallel specialist fleet. A single
+# generalist CLI agent ("the partner") does the legwork each round — lit
+# search, reading, writing, coding up examples — in a persistent workspace
+# (notebook.md / problem.md / claims.md / advisor_log.md / draft.tex), then
+# ends the round with a short meeting memo and real questions. The human
+# replies as the collaborator who sets direction; their reply feeds straight
+# into the next round (no synthesizer in between). A cross-provider referee
+# (Codex) is summoned only when the partner or the human names a specific
+# claim to check — fresh context, different model family, prompted to refute.
+#
+# Model knobs: partner_model/partner_effort (Claude CLI), referee_model/
+# referee_effort (Codex CLI). Economy test tier: haiku / low / gpt-5.4-mini.
+# Needs Claude subscription auth; Codex auth only if the referee is used.
+workflow: proofstack.agents.dag_workflow.DAGWorkflow
+description: 'Research partner: one persistent agentic collaborator (Claude CLI) doing
+  the legwork in a durable workspace, a human advisor steering every round, and an
+  independent cross-provider referee (Codex) summoned on demand. Model knobs:
+  partner_model, partner_effort, referee_model, referee_effort.'
+
+budget:
+  max_usd: 5.0
+  max_tokens: 40000000
+  max_tool_calls: 40
+  max_wallclock_s: 14400
+
+inputs:
+  problem: ''
+  max_rounds: 8
+  partner_model: sonnet
+  partner_effort: medium
+  referee_model: gpt-5.4-mini
+  referee_effort: medium
+
+components:
+  partner:
+    cmd:
+      - claude
+      - -p
+      - --output-format
+      - stream-json
+      - --verbose
+      - --model
+      - '{partner_model}'
+      - --effort
+      - '{partner_effort}'
+      - --permission-mode
+      - acceptEdits
+      - --allowedTools
+      - WebSearch,WebFetch,Bash(*)
+    soft_timeout_s: 780
+    sandbox:
+      backend: subprocess
+      timeout_s: 900
+    env:
+      HOME: '{env:HOME}'
+    cache_enabled: true
+    usage:
+      type: claude_json
+    contract: auto
+    prompt: |
+      You are the research partner of a working mathematician. Think of the
+      relationship as close collaboration: you do the legwork — searching and
+      reading literature fast, writing carefully, coding up examples, bringing
+      in ideas from adjacent fields — and you bring your own mathematical ideas,
+      but your collaborator sets the overall direction. Never wait passively for
+      them to solve it, and never ask for permission; ask for mathematical
+      judgment.
+
+      Your workspace persists between rounds. Maintain these files:
+
+      - notebook.md — your running research notes. Read it FIRST each round to
+        recover where you are. Keep it honest: dead ends and failed attempts
+        stay recorded, with why they failed.
+      - problem.md — the LIVE problem statement. Create it in round 1 from the
+        problem below. If you and your collaborator decide to reshape the
+        problem (strengthen, weaken, specialize, change definitions), edit this
+        file and record the old version and the reason in notebook.md.
+        Reshaping the problem is normal research, not failure.
+      - claims.md — a ledger of every external result you rely on, each with a
+        status: VERIFIED (you fetched the source and quote the exact statement,
+        with reference), CITED-UNVERIFIED, CONJECTURED, or REFUTED. HOUSE RULE:
+        nothing enters the draft's critical path with status below VERIFIED.
+        If a step needs an unverified citation, verifying it IS the work.
+      - advisor_log.md — append your collaborator's reply verbatim each round.
+        Every round, reread the whole log and account for any of their ideas
+        not yet resolved: adopted, tested-and-failed (show exactly where it
+        broke), or argued against (with the argument). NEVER silently drop
+        their idea. If their suggestion failed, say so plainly and show the
+        failure — honest pushback is part of the job.
+      - draft.tex — a self-contained LaTeX document with the current state of
+        the argument: status paragraph (complete proof or progress report),
+        the cleanest rigorous argument so far, and a clearly marked section of
+        remaining gaps. Update it EVERY round, even if only the gaps changed.
+
+      How to work each round:
+      - Round 1 (empty workspace): reconnaissance. Restate the problem
+        precisely, fix notation, say what a valid answer must look like, do an
+        initial literature scan, and propose 2-3 candidate lines of attack with
+        honest trade-offs. Your first meeting memo asks your collaborator to
+        pick and shape the plan — give them a real decision, with your own
+        recommendation and why.
+      - Later rounds: your collaborator's reply below is the direction. Address
+        it FIRST — answer their questions, act on their ideas, and only then
+        continue your own thread. Do ONE focused chunk of work per round; depth
+        over sprawl.
+      - Play to your strengths: verify literature by actually fetching sources
+        (WebSearch/WebFetch); test claims by writing and running code on small
+        explicit cases (a single broken toy case is high-value information);
+        translate ideas across fields.
+
+      End every round by writing meeting.md — a short memo to your
+      collaborator, in this shape:
+      - DID: one or two lines on what you worked on.
+      - FOUND: the concrete yields — lemma statements (with proofs banked in
+        the draft), computed examples, verified sources. State the actual
+        mathematics; do not summarize it away.
+      - STUCK/BROKE: what failed or resists, precisely where.
+      - QUESTIONS: 2-3 numbered questions for your collaborator, each with your
+        own current guess and reasoning. Ask about the mathematics (is this
+        reduction honest? which of these two obstructions is more fundamental?
+        do you believe this generalization?), never about process. If there is
+        something worth their thinking time while you grind, name it.
+
+      Independent check: if you are about to build on a claim whose failure
+      would sink the round — or your collaborator asked for a check — write the
+      claim AND its full justification, self-contained, to referee_request.txt.
+      An independent referee from a different model family will try to break
+      it. Otherwise write exactly NONE to referee_request.txt. If a referee
+      report from last round is shown below, engage with it in notebook.md and
+      the draft before anything else.
+
+      Problem (original statement; problem.md is authoritative once created):
+      {problem}
+
+      Your collaborator's reply from the last meeting (empty in round 1):
+      {advisor_reply}
+
+      Referee report on your last requested check (empty if none):
+      {referee_report}
+    input_schema:
+      problem: string
+      advisor_reply: string
+      referee_report: string
+      workspace: string
+    output_schema:
+      workspace: string
+      meeting: string
+      referee_request: string
+      draft: string
+      status: string
+    output_files:
+      meeting: meeting.md
+      referee_request: referee_request.txt
+      draft: draft.tex
+    done_outputs:
+      status: status
+
+  referee:
+    cmd:
+      - codex
+      - exec
+      - --ignore-user-config
+      - --skip-git-repo-check
+      - --ephemeral
+      - --json
+      - -m
+      - '{referee_model}'
+      - -c
+      - model_reasoning_effort="{referee_effort}"
+    codex_sandbox: auto
+    copy_codex_auth: true
+    soft_timeout_s: 600
+    sandbox:
+      backend: subprocess
+      timeout_s: 720
+    cache_enabled: true
+    contract: auto
+    prompt: |
+      You are an independent referee. You were NOT part of the team that wrote
+      the claim below, you share none of their context, and your only job is to
+      try to BREAK it: find gaps, unjustified steps, false statements, missing
+      cases, or misquoted/nonexistent literature. Check any cited result
+      against what you independently know of the field; if you cannot confirm
+      a cited statement exists in the stated form, say so explicitly — do NOT
+      extend it good faith. Work through the mathematics; small concrete
+      counterexample hunts are worth more than stylistic remarks.
+
+      Write report.md:
+      - First line: exactly one of VERDICT: SOUND / VERDICT: BROKEN /
+        VERDICT: UNCLEAR.
+      - Then the specifics: each problem found, with the precise step and why
+        it fails, or (if sound) the load-bearing steps you checked and how.
+
+      Problem context:
+      {problem}
+
+      Claim and justification under review:
+      {claim}
+    input_schema:
+      problem: string
+      claim: string
+      workspace: string
+    output_schema:
+      workspace: string
+      report: string
+      status: string
+    output_files:
+      report: report.md
+    done_outputs:
+      status: status
+
+  advisor:
+    prompt: |
+      Meeting time: your research partner has finished a round and written you
+      the memo below. Reply as the collaborator who sets direction — answer
+      their questions, contribute your own ideas, redirect them, or reshape
+      the problem itself. Everything you write goes straight into their next
+      round and is logged verbatim; they must account for every idea of yours
+      until it is adopted, refuted, or argued down. Write "@referee: <claim>"
+      to demand an independent check of something specific. Set verdict to
+      "stop" to end the project (e.g. proof complete, or you are calling it),
+      otherwise "continue".
+
+      Partner's memo:
+      {meeting}
+
+      Independent referee report (empty if no check was requested):
+      {referee_report}
+    input_schema:
+      problem: string
+      meeting: string
+      referee_report: string
+      proof: string
+    output_schema:
+      reply: string
+      verdict: string
+    cache_enabled: true
+
+dag:
+  nodes:
+    - id: rounds
+      kind: repeat
+      max_iterations: $input.max_rounds
+      initial_state:
+        workspace: ''
+        advisor_reply: ''
+        referee_report: ''
+        draft: ''
+        verdict: ''
+      condition:
+        python: iteration == 0 or inputs.get("verdict", "").strip().lower() != "stop"
+      body:
+        nodes:
+          - id: partner
+            kind: agent
+            agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+            name: partner
+            inputs:
+              problem: $input.problem
+              advisor_reply: $state.advisor_reply
+              referee_report: $state.referee_report
+              workspace: $state.workspace
+          - id: referee
+            kind: agent
+            needs: [partner]
+            agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+            name: referee
+            inputs:
+              problem: $input.problem
+              claim: $node.partner.referee_request
+            when:
+              inputs:
+                request: $node.partner.referee_request
+              python: inputs.get("request", "").strip().upper() not in ("", "NONE")
+            default:
+              workspace: ''
+              report: ''
+              status: skipped
+          - id: advisor
+            kind: agent
+            needs: [partner, referee]
+            agent: proofstack.agents.human_agent.HumanAgent
+            name: advisor
+            inputs:
+              problem: $input.problem
+              meeting: $node.partner.meeting
+              referee_report: $node.referee.report
+              proof: $node.partner.draft
+        state_updates:
+          workspace: $node.partner.workspace
+          advisor_reply: $node.advisor.reply
+          referee_report: $node.referee.report
+          draft: $node.partner.draft
+          verdict: $node.advisor.verdict
+      outputs:
+        draft: $state.draft
+        verdict: $state.verdict
+  outputs:
+    draft: $node.rounds.draft
+    verdict: $node.rounds.verdict
