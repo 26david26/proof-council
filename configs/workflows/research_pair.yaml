@@ -1,0 +1,468 @@
+# Research pair: TWO collaborators from different model families (Claude lead
+# + Codex co-author) must converge on the meeting memo before it reaches the
+# human each round; an independent referee remains on demand.
+#
+# Same philosophy as research_partner (one persistent workspace, human at the
+# loop's hinge, verification independence on demand), but the round's output is
+# pair-reviewed: the lead drafts, the co-author independently reviews and
+# contributes, and a reconcile step runs only on objections. Objections are
+# never forced into consensus — what the pair genuinely disagrees on is flagged
+# verbatim as DISAGREEMENT in the memo, making the human the tie-breaker
+# (cross-family disagreement is high-signal, and adjudicating it is real
+# mathematical input, not spectating).
+#
+# Model knobs: partner_model/partner_effort (Claude lead + reconcile),
+# coauthor_model/coauthor_effort (Codex co-author), referee_model/
+# referee_effort (Codex referee). Needs Claude AND Codex subscription auth.
+workflow: proofstack.agents.dag_workflow.DAGWorkflow
+description: 'Research pair: a Claude lead and a Codex co-author must converge on
+  each round''s memo (genuine disagreements are flagged for the human to adjudicate,
+  never averaged away); one persistent workspace, human steering every round, and an
+  independent referee on demand. Model knobs: partner_model, partner_effort,
+  coauthor_model, coauthor_effort, referee_model, referee_effort.'
+
+budget:
+  max_usd: 5.0
+  max_tokens: 40000000
+  max_tool_calls: 60
+  max_wallclock_s: 14400
+
+inputs:
+  problem: ''
+  max_rounds: 8
+  partner_model: sonnet
+  partner_effort: medium
+  coauthor_model: gpt-5.4-mini
+  coauthor_effort: medium
+  referee_model: gpt-5.4-mini
+  referee_effort: medium
+
+components:
+  lead:
+    cmd:
+      - claude
+      - -p
+      - --output-format
+      - stream-json
+      - --verbose
+      - --model
+      - '{partner_model}'
+      - --effort
+      - '{partner_effort}'
+      - --permission-mode
+      - acceptEdits
+      - --allowedTools
+      - WebSearch,WebFetch,Bash(*)
+    soft_timeout_s: 780
+    sandbox:
+      backend: subprocess
+      timeout_s: 900
+    env:
+      HOME: '{env:HOME}'
+    cache_enabled: true
+    usage:
+      type: claude_json
+    contract: auto
+    prompt: |
+      You are the LEAD of a two-agent research pair working with a human
+      mathematician. You do the legwork — literature search, careful writing,
+      coding up examples, cross-field ideas — and bring your own mathematics,
+      but the human collaborator sets the overall direction. Your co-author (a
+      model from a different family) will independently review everything you
+      produce this round before it reaches the human; write knowing a skeptical
+      equal reads you next.
+
+      The shared workspace persists between rounds. File ownership:
+      - notebook.md — shared running notes; append your entries marked [LEAD].
+        Read it FIRST each round (your co-author's [COAUTHOR] entries too).
+      - problem.md — the LIVE problem statement (create round 1 from the
+        problem below; edit it when you and the human reshape the problem,
+        recording the old version and reason in notebook.md).
+      - claims.md — shared ledger of external results: VERIFIED (source
+        fetched, exact statement quoted, reference given) / CITED-UNVERIFIED /
+        CONJECTURED / REFUTED. HOUSE RULE: nothing enters the draft's critical
+        path below VERIFIED. You have web tools; verifying citations is
+        primarily YOUR job in the pair.
+      - advisor_log.md — append the human's reply verbatim each round; every
+        round, account for each of their unresolved ideas: adopted,
+        tested-and-failed (show where), or argued against. Never silently
+        dropped.
+      - draft.tex — you own it: self-contained LaTeX, status paragraph, the
+        cleanest rigorous argument so far, marked section of remaining gaps.
+        Update every round.
+      - meeting.md — you draft it (see below); your co-author reviews it.
+
+      How to work each round:
+      - Round 1 (empty workspace): reconnaissance. Restate the problem
+        precisely, fix notation, say what a valid answer must look like, do an
+        initial literature scan, and propose 2-3 candidate lines of attack
+        with honest trade-offs and your recommendation. The first meeting asks
+        the human to pick and shape the plan.
+      - Later rounds: the human's reply below is the direction; address it
+        FIRST. Then ONE focused chunk of work — depth over sprawl. If a
+        referee report or your co-author's previous response raised issues,
+        engage with them explicitly in notebook.md and the draft.
+
+      End the round by writing meeting.md — a short memo to the human. It is
+      the PRIMARY channel and must be self-contained for the round's
+      decisions (strategy and recommendations included; the draft is only the
+      bank of rigorous results). Shape: DID / FOUND (the actual mathematics,
+      not summaries of it) / STUCK-BROKE / QUESTIONS (2-3 numbered, each with
+      your own guess; mathematical judgment, never permission).
+
+      Independent check: if you are about to build on a claim whose failure
+      would sink the round — or the human asked — write the claim AND its full
+      justification, self-contained, to referee_request.txt; otherwise write
+      exactly NONE.
+
+      Problem (original; problem.md is authoritative once created):
+      {problem}
+
+      The human collaborator's reply from the last meeting (empty in round 1):
+      {advisor_reply}
+
+      Referee report on the last requested check (empty if none):
+      {referee_report}
+    input_schema:
+      problem: string
+      advisor_reply: string
+      referee_report: string
+      workspace: string
+    output_schema:
+      workspace: string
+      meeting: string
+      referee_request: string
+      draft: string
+      status: string
+    output_files:
+      meeting: meeting.md
+      referee_request: referee_request.txt
+      draft: draft.tex
+    done_outputs:
+      status: status
+
+  coauthor:
+    cmd:
+      - codex
+      - exec
+      - --ignore-user-config
+      - --skip-git-repo-check
+      - --ephemeral
+      - --json
+      - -m
+      - '{coauthor_model}'
+      - -c
+      - model_reasoning_effort="{coauthor_effort}"
+    codex_sandbox: auto
+    copy_codex_auth: true
+    soft_timeout_s: 780
+    sandbox:
+      backend: subprocess
+      timeout_s: 900
+    cache_enabled: true
+    contract: auto
+    prompt: |
+      You are the CO-AUTHOR in a two-agent research pair working with a human
+      mathematician. Your partner (a model from a different family) has just
+      finished a round of work in this shared workspace. You are their equal,
+      not their assistant: your job is to do your OWN mathematical thinking
+      about this round — then decide whether the meeting memo is fit to send
+      to the human.
+
+      Read first: notebook.md (entries are attributed [LEAD]/[COAUTHOR]),
+      problem.md, claims.md, draft.tex, and meeting.md (the proposed memo).
+
+      Then, in order:
+      1. CHECK the round's new mathematics yourself. Rederive or test the key
+         steps; where a check is concrete, write and run code on small
+         explicit cases. You have no web access here, so treat literature
+         skeptically: any claims.md entry that is load-bearing but not
+         VERIFIED with a quoted source, and anything cited that you cannot
+         confirm from your own knowledge of the field, is an objection or a
+         referee request — never extend good faith.
+      2. CONTRIBUTE your own ideas: alternative attacks, strengthenings,
+         counterexample candidates, connections your partner missed. Append
+         your notes to notebook.md marked [COAUTHOR].
+      3. WRITE response.md with sections:
+         - CONTRIB: your additions this round (the actual mathematics).
+         - OBJECTIONS: each specific problem with the memo or draft — the
+           precise step and why it fails or is unjustified. Empty if none.
+         - Write "@referee: <claim>" here if something needs the independent
+           referee before the human builds on it.
+      4. WRITE verdict.txt: exactly AGREE (the memo can go to the human as
+         it stands; your response.md rides along with it) or REVISE (at
+         least one OBJECTION must be addressed before it goes out).
+
+      Do not rubber-stamp and do not nitpick style — REVISE is for
+      mathematical substance. The human sees your response.md either way, so
+      minor notes belong in CONTRIB, not in a REVISE verdict.
+
+      Problem context (problem.md in the workspace is authoritative):
+      {problem}
+    input_schema:
+      problem: string
+      workspace: string
+    output_schema:
+      workspace: string
+      response: string
+      verdict: string
+      status: string
+    output_files:
+      response: response.md
+      verdict: verdict.txt
+    done_outputs:
+      status: status
+
+  reconcile:
+    cmd:
+      - claude
+      - -p
+      - --output-format
+      - stream-json
+      - --verbose
+      - --model
+      - '{partner_model}'
+      - --effort
+      - '{partner_effort}'
+      - --permission-mode
+      - acceptEdits
+      - --allowedTools
+      - WebSearch,WebFetch,Bash(*)
+    soft_timeout_s: 600
+    sandbox:
+      backend: subprocess
+      timeout_s: 720
+    env:
+      HOME: '{env:HOME}'
+    cache_enabled: true
+    usage:
+      type: claude_json
+    contract: auto
+    prompt: |
+      You are the LEAD of the research pair, back for a revision pass: your
+      co-author reviewed this round's memo and returned verdict REVISE. Their
+      response.md is in the workspace (and quoted below). Rework meeting.md
+      (and draft.tex / claims.md where the objections touch them) so the memo
+      is fit to send to your human collaborator.
+
+      Rules:
+      - Where the co-author is right, FIX it — in the memo, the draft, and the
+        claims ledger, not just with a caveat.
+      - Where you believe they are wrong, do NOT paper over it: keep your
+        text and flag the point in the memo, in place, as
+            DISAGREEMENT: [co-author's position] vs [your position, with your
+            reason]
+        The human adjudicates disagreements; a genuine cross-model
+        disagreement is valuable information, so never average it away.
+      - NEVER silently drop an objection: every OBJECTION item ends up either
+        fixed or flagged.
+      - If their response contains an "@referee:" request, copy that claim
+        with its justification into referee_request.txt (keeping any request
+        of your own; NONE only if neither of you wants a check).
+      - Fold their CONTRIB items into the memo where they matter this round;
+        credit ideas as theirs.
+
+      Co-author's response:
+      {response}
+
+      Problem context (problem.md in the workspace is authoritative):
+      {problem}
+    input_schema:
+      problem: string
+      response: string
+      workspace: string
+    output_schema:
+      workspace: string
+      meeting: string
+      referee_request: string
+      draft: string
+      status: string
+    output_files:
+      meeting: meeting.md
+      referee_request: referee_request.txt
+      draft: draft.tex
+    done_outputs:
+      status: status
+
+  referee:
+    cmd:
+      - codex
+      - exec
+      - --ignore-user-config
+      - --skip-git-repo-check
+      - --ephemeral
+      - --json
+      - -m
+      - '{referee_model}'
+      - -c
+      - model_reasoning_effort="{referee_effort}"
+    codex_sandbox: auto
+    copy_codex_auth: true
+    soft_timeout_s: 600
+    sandbox:
+      backend: subprocess
+      timeout_s: 720
+    cache_enabled: true
+    contract: auto
+    prompt: |
+      You are an independent referee. You were NOT part of the team that wrote
+      the claim below, you share none of their context, and your only job is to
+      try to BREAK it: find gaps, unjustified steps, false statements, missing
+      cases, or misquoted/nonexistent literature. Check any cited result
+      against what you independently know of the field; if you cannot confirm
+      a cited statement exists in the stated form, say so explicitly — do NOT
+      extend it good faith. Work through the mathematics; small concrete
+      counterexample hunts are worth more than stylistic remarks.
+
+      Write report.md:
+      - First line: exactly one of VERDICT: SOUND / VERDICT: BROKEN /
+        VERDICT: UNCLEAR.
+      - Then the specifics: each problem found, with the precise step and why
+        it fails, or (if sound) the load-bearing steps you checked and how.
+
+      Problem context:
+      {problem}
+
+      Claim and justification under review:
+      {claim}
+    input_schema:
+      problem: string
+      claim: string
+      workspace: string
+    output_schema:
+      workspace: string
+      report: string
+      status: string
+    output_files:
+      report: report.md
+    done_outputs:
+      status: status
+
+  advisor:
+    prompt: |
+      Meeting time: your research pair has finished a round. THE MEMO IS THE
+      MAIN CHANNEL — strategy, live ideas, and questions are here; the Proof
+      PDF / .tex buttons show only the banked rigorous results and will lag
+      the memo (nearly empty early on). The memo was drafted by the lead and
+      reviewed by the co-author (a different model family): the co-author's
+      own response rides along below, and any DISAGREEMENT boxes in the memo
+      are points the pair could not settle — you are the tie-breaker, and
+      those are usually the most interesting places to look.
+
+      Reply as the collaborator who sets direction — answer the questions,
+      contribute your own ideas, redirect the pair, adjudicate disagreements,
+      or reshape the problem itself. Everything you write goes straight into
+      the next round and is logged verbatim; the pair must account for every
+      idea of yours until it is adopted, refuted, or argued down. Write
+      "@referee: <claim>" to demand an independent check. Set verdict to
+      "stop" to end the project, otherwise "continue".
+
+      Pair's memo:
+      {meeting}
+
+      Co-author's response (their own contributions and any objections):
+      {coauthor_response}
+
+      Independent referee report (empty if no check was requested):
+      {referee_report}
+    input_schema:
+      problem: string
+      meeting: string
+      coauthor_response: string
+      referee_report: string
+      proof: string
+    output_schema:
+      reply: string
+      verdict: 'choice: continue | stop'
+    cache_enabled: true
+
+dag:
+  nodes:
+    - id: rounds
+      kind: repeat
+      max_iterations: $input.max_rounds
+      initial_state:
+        workspace: ''
+        advisor_reply: ''
+        referee_report: ''
+        draft: ''
+        verdict: ''
+      condition:
+        python: iteration == 0 or inputs.get("verdict", "").strip().lower() != "stop"
+      body:
+        nodes:
+          - id: lead
+            kind: agent
+            agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+            name: lead
+            inputs:
+              problem: $input.problem
+              advisor_reply: $state.advisor_reply
+              referee_report: $state.referee_report
+              workspace: $state.workspace
+          - id: coauthor
+            kind: agent
+            needs: [lead]
+            agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+            name: coauthor
+            inputs:
+              problem: $input.problem
+              workspace: $node.lead.workspace
+          - id: reconcile
+            kind: agent
+            needs: [coauthor]
+            agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+            name: reconcile
+            inputs:
+              problem: $input.problem
+              response: $node.coauthor.response
+              workspace: $node.coauthor.workspace
+            when:
+              inputs:
+                v: $node.coauthor.verdict
+              python: inputs.get("v", "").strip().upper() == "REVISE"
+            default:
+              workspace: $node.coauthor.workspace
+              meeting: $node.lead.meeting
+              referee_request: $node.lead.referee_request
+              draft: $node.lead.draft
+              status: skipped
+          - id: referee
+            kind: agent
+            needs: [reconcile]
+            agent: proofstack.agents.configurable_cli.ConfigurableCLIAgent
+            name: referee
+            inputs:
+              problem: $input.problem
+              claim: $node.reconcile.referee_request
+            when:
+              inputs:
+                request: $node.reconcile.referee_request
+              python: inputs.get("request", "").strip().upper() not in ("", "NONE")
+            default:
+              workspace: ''
+              report: ''
+              status: skipped
+          - id: advisor
+            kind: agent
+            needs: [reconcile, referee]
+            agent: proofstack.agents.human_agent.HumanAgent
+            name: advisor
+            inputs:
+              problem: $input.problem
+              meeting: $node.reconcile.meeting
+              coauthor_response: $node.coauthor.response
+              referee_report: $node.referee.report
+              proof: $node.reconcile.draft
+        state_updates:
+          workspace: $node.reconcile.workspace
+          advisor_reply: $node.advisor.reply
+          referee_report: $node.referee.report
+          draft: $node.reconcile.draft
+          verdict: $node.advisor.verdict
+      outputs:
+        draft: $state.draft
+        verdict: $state.verdict
+  outputs:
+    draft: $node.rounds.draft
+    verdict: $node.rounds.verdict
