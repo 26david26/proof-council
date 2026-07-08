@@ -112,7 +112,11 @@ components:
         translate ideas across fields.
 
       End every round by writing meeting.md — a short memo to your
-      collaborator, in this shape:
+      collaborator. The memo is the PRIMARY channel: it must be self-contained
+      for making this round's decisions, including your strategic thinking and
+      recommendations — your collaborator should not need to open the draft to
+      answer your questions. The draft is the bank of rigorous results, not
+      where the live thinking goes. Shape:
       - DID: one or two lines on what you worked on.
       - FOUND: the concrete yields — lemma statements (with proofs banked in
         the draft), computed examples, verified sources. State the actual
@@ -215,13 +219,18 @@ components:
   advisor:
     prompt: |
       Meeting time: your research partner has finished a round and written you
-      the memo below. Reply as the collaborator who sets direction — answer
-      their questions, contribute your own ideas, redirect them, or reshape
-      the problem itself. Everything you write goes straight into their next
-      round and is logged verbatim; they must account for every idea of yours
-      until it is adopted, refuted, or argued down. Write "@referee: <claim>"
-      to demand an independent check of something specific. Set verdict to
-      "stop" to end the project (e.g. proof complete, or you are calling it),
+      the memo below. THE MEMO IS THE MAIN CHANNEL — the strategy, the live
+      ideas, and the questions are here. The Proof PDF / .tex buttons show the
+      current draft, which holds only the banked rigorous results; early in a
+      project it will be nearly empty and it always lags the memo. Read the
+      memo to decide, open the PDF when you want to check the mathematics in
+      detail. Reply as the collaborator who sets direction — answer their
+      questions, contribute your own ideas, redirect them, or reshape the
+      problem itself. Everything you write goes straight into their next round
+      and is logged verbatim; they must account for every idea of yours until
+      it is adopted, refuted, or argued down. Write "@referee: <claim>" to
+      demand an independent check of something specific. Set verdict to "stop"
+      to end the project (e.g. proof complete, or you are calling it),
       otherwise "continue".
 
       Partner's memo:
