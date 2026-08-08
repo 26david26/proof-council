@@ -69,6 +69,12 @@ MIN_CODEX_VERSION: Final[tuple[int, int, int]] = (0, 144, 0)
 # - .pwc/ is framework state (done.json, WRAP_UP sentinel, runtime bits).
 # - shell startup files are framework shims so nested login shells can
 #   still find ``finish``; they are not useful to the Author.
+# - package caches: ``sandbox/base.py`` sets HOME to the sandbox root, so a
+#   worker that runs ``uv pip install numpy scipy`` writes thousands of files
+#   to ``<workspace>/.cache/uv``. Shipping those exceeds the OpenAI container
+#   file limit ("Expected at most 1000 files"), which fails the *Author* call
+#   rather than the compute call — so the symptom appears two nodes away from
+#   the cause, as ``ValueError: Conversation ended with reasoning block``.
 _ZIP_EXCLUDE_TOP = {
     "problem_documents_readonly",
     ".codex-home",
@@ -77,6 +83,10 @@ _ZIP_EXCLUDE_TOP = {
     ".bash_profile",
     ".profile",
     ".bashrc",
+    ".cache",
+    ".local",
+    ".venv",
+    ".npm",
 }
 _CODEX_LAST_MESSAGE_REL: Final[str] = ".pwc/runtime/codex-last-message.md"
 _DOCKER_CODEX_HOME: Final[str] = "/codex-home"
